@@ -1,0 +1,47 @@
+{
+  "name": "comment-please-backend",
+  "version": "1.0.0",
+  "description": "Meta DM Automation SaaS Backend",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "worker:webhook": "node src/workers/webhook.worker.js",
+    "worker:message": "node src/workers/message.worker.js",
+    "worker:all": "node src/workers/webhook.worker.js & node src/workers/message.worker.js",
+    "cron:tokens": "node src/cron/tokenRefresh.js",
+    "seed": "node src/scripts/seed.js",
+    "unseed": "node src/scripts/unseed.js",
+    "lint": "eslint src/ --ext .js",
+    "test": "jest --coverage"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "bcryptjs": "^2.4.3",
+    "bullmq": "^4.18.3",
+    "compression": "^1.7.4",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.3",
+    "express-rate-limit": "^7.2.0",
+    "helmet": "^7.1.0",
+    "ioredis": "^5.3.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.3.2",
+    "morgan": "^1.10.0",
+    "rate-limit-redis": "^4.2.0",
+    "uuid": "^9.0.1",
+    "winston": "^3.13.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.0",
+    "supertest": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
