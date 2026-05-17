@@ -88,6 +88,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ── Privacy & Terms (required for Meta app publishing) ───────────────
+app.get('/privacy', (_req, res) => {
+  res.send(`<html><body><h1>Privacy Policy</h1><p>commentPlease does not sell or share your data. Instagram tokens are encrypted and stored securely. You can disconnect your account at any time.</p></body></html>`);
+});
+
+app.get('/terms', (_req, res) => {
+  res.send(`<html><body><h1>Terms of Service</h1><p>By using commentPlease, you agree to use the service in accordance with Instagram's terms of service.</p></body></html>`);
+});
+
 // ── 404 handler ───────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({ success: false, message: 'Route not found' });

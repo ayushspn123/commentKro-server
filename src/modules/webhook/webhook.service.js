@@ -1,5 +1,5 @@
 const Automation = require('../automation/automation.model');
-const { messageQueue, analyticsQueue } = require('../../config/queues');
+const { safeAdd, getQueues } = require('../../config/queues');
 const { matchesKeywords, interpolateTemplate, generateTraceId } = require('../../utils/helpers');
 const logger = require('../../utils/logger');
 
@@ -44,26 +44,22 @@ const dispatchWebhookEvent = async (platform, pageId, event, traceId = generateT
         comment_text: text,
       });
 
-      await messageQueue.add(
-        action.type,
-        {
-          userId: String(automation.userId),
-          pageId,
-          platform,
-          recipientId: senderId,
-          commentId,
-          mediaId,
-          automationId: String(automation._id),
-          message: renderedMessage,
-          traceId,
-        },
-        { delay: action.delay ?? 0 }
-      );
+      await safeAdd('message', action.type, {
+        userId: String(automation.userId),
+        pageId,
+        platform,
+        recipientId: senderId,
+        commentId,
+        mediaId,
+        automationId: String(automation._id),
+        message: renderedMessage,
+        traceId,
+      }, { delay: action.delay ?? 0 });
     }
 
     await Automation.findByIdAndUpdate(automation._id, { $inc: { 'stats.triggered': 1 } });
 
-    await analyticsQueue.add('automation-triggered', {
+    await safeAdd('analytics', 'automation-triggered', {
       userId: String(automation.userId),
       automationId: String(automation._id),
       platform,

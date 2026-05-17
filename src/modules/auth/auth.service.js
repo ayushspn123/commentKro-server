@@ -119,70 +119,103 @@ const resetPassword = async (rawToken, newPassword) => {
   return { message: 'Password updated successfully. Please log in again.' };
 };
 
-// ── Meta OAuth ────────────────────────────────────────────────────────
+// ── Instagram Business Login OAuth ───────────────────────────────────
 const handleMetaCallback = async (userId, code) => {
-  // ── Step 1: Exchange code for short-lived token ────────────────────
-  const tokenRes = await axios.get(`${META_GRAPH_BASE}/oauth/access_token`, {
-    params: {
+  // ── Step 1: Exchange code for short-lived Instagram User token ─────
+  const tokenRes = await axios.post(
+    'https://api.instagram.com/oauth/access_token',
+    new URLSearchParams({
       client_id:     env.META_APP_ID,
       client_secret: env.META_APP_SECRET,
+      grant_type:    'authorization_code',
       redirect_uri:  env.META_OAUTH_REDIRECT_URI,
       code,
-    },
-  });
+    }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
+
   const shortLivedToken = tokenRes.data.access_token;
+  const igUserId        = tokenRes.data.user_id?.toString();
 
-  // ── Step 2: Exchange for 60-day long-lived user token ─────────────
-  const longRes = await axios.get(`${META_GRAPH_BASE}/oauth/access_token`, {
+  // ── Step 2: Exchange for long-lived token (60 days) ───────────────
+  const longRes = await axios.get('https://graph.instagram.com/access_token', {
     params: {
-      grant_type:       'fb_exchange_token',
-      client_id:        env.META_APP_ID,
-      client_secret:    env.META_APP_SECRET,
-      fb_exchange_token: shortLivedToken,
+      grant_type:         'ig_exchange_token',
+      client_secret:      env.META_APP_SECRET,
+      access_token:       shortLivedToken,
     },
   });
-  const userLongToken = longRes.data.access_token;
-  const expiresIn    = longRes.data.expires_in || 5_183_944; // ~60 days default
 
-  // ── Step 3: Get Meta user info ─────────────────────────────────────
-  const meRes = await axios.get(`${META_GRAPH_BASE}/me`, {
-    params: { access_token: userLongToken, fields: 'id,name' },
+  const longLivedToken = longRes.data.access_token;
+  const expiresIn      = longRes.data.expires_in || 5_183_944; // ~60 days
+  const expiresAt      = new Date(Date.now() + expiresIn * 1000);
+
+  // ── Step 3: Get Instagram user profile ────────────────────────────
+  const profileRes = await axios.get(`https://graph.instagram.com/v21.0/me`, {
+    params: {
+      fields:       'id,name,username,profile_picture_url',
+      access_token: longLivedToken,
+    },
   });
 
-  // ── Step 4: Get all Facebook Pages the user manages ───────────────
-  const pagesRes = await axios.get(`${META_GRAPH_BASE}/me/accounts`, {
-    params: { access_token: userLongToken },
-  });
+  const profile = profileRes.data;
+  logger.info(`Instagram profile: @${profile.username} (${profile.id})`);
 
-  const pages = pagesRes.data.data || [];
-  const connectedPages = [];
+  // ── Step 4: Save encrypted token ──────────────────────────────────
+  const encryptedToken = encrypt(longLivedToken);
 
-  for (const page of pages) {
-    const encryptedPageToken = encrypt(page.access_token);
-    const expiresAt = new Date(Date.now() + expiresIn * 1000);
+  await Token.findOneAndUpdate(
+    { userId, pageId: igUserId, platform: 'instagram' },
+    {
+      userId,
+      pageId:      igUserId,
+      platform:    'instagram',
+      accessToken: encryptedToken,
+      expiresAt,
+      refreshedAt: new Date(),
+      scopes: [
+        'instagram_business_basic',
+        'instagram_business_manage_messages',
+        'instagram_business_manage_comments',
+      ],
+    },
+    { upsert: true, new: true }
+  );
 
-    // Save Facebook Page token
-    await Token.findOneAndUpdate(
-      { userId, pageId: page.id, platform: 'facebook' },
+  // ── Step 5: Subscribe to webhooks ─────────────────────────────────
+  try {
+    await axios.post(
+      `https://graph.instagram.com/v21.0/${igUserId}/subscribed_apps`,
+      null,
       {
-        userId, pageId: page.id, platform: 'facebook',
-        accessToken: encryptedPageToken, expiresAt,
-        refreshedAt: new Date(),
-        scopes: ['pages_messaging', 'pages_read_engagement'],
-      },
-      { upsert: true, new: true }
+        params: {
+          subscribed_fields: 'messages,comments',
+          access_token:      longLivedToken,
+        },
+      }
     );
-
-    connectedPages.push({ pageId: page.id, pageName: page.name, platform: 'facebook' });
+    logger.info(`Webhook subscription set for IG user ${igUserId}`);
+  } catch (subErr) {
+    logger.warn(`Webhook subscription failed: ${subErr.response?.data?.error?.message || subErr.message}`);
   }
 
+  // ── Step 6: Save to user's connectedPages (no duplicates) ─────────
   await User.findByIdAndUpdate(userId, {
-    metaUserId: meRes.data.id,
-    $push: { connectedPages: { $each: connectedPages } },
+    $pull: { connectedPages: { pageId: igUserId } },
+  });
+  await User.findByIdAndUpdate(userId, {
+    metaUserId: igUserId,
+    $push: {
+      connectedPages: {
+        pageId:   igUserId,
+        pageName: profile.username || profile.name,
+        platform: 'instagram',
+      },
+    },
   });
 
-  logger.info(`Meta OAuth completed for user ${userId}, ${pages.length} page(s) connected`);
-  return { connectedPages };
+  logger.info(`Instagram Business Login done for user ${userId} — @${profile.username} connected`);
+  return { connectedPages: [{ pageId: igUserId, pageName: profile.username, platform: 'instagram' }] };
 };
 
 module.exports = { register, login, refreshAccessToken, forgotPassword, resetPassword, handleMetaCallback };

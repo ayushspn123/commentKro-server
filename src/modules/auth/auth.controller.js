@@ -79,20 +79,20 @@ const metaOAuthRedirect = (req, res) => {
   const state = Buffer.from(JSON.stringify({ userId: req.user.id })).toString('base64url');
 
   const params = new URLSearchParams({
-    client_id: env.META_APP_ID,
-    redirect_uri: env.META_OAUTH_REDIRECT_URI,
-    scope: [
-      'pages_messaging',
-      'pages_read_engagement',
-      'pages_manage_metadata',
-      'instagram_basic',
-      'instagram_manage_messages',
-      'instagram_manage_comments',
-    ].join(','),
+    force_reauth:  'true',
+    client_id:     env.META_APP_ID,
+    redirect_uri:  env.META_OAUTH_REDIRECT_URI,
     response_type: 'code',
+    scope: [
+      'instagram_business_basic',
+      'instagram_business_manage_messages',
+      'instagram_business_manage_comments',
+      'instagram_business_content_publish',
+      'instagram_business_manage_insights',
+    ].join(','),
     state,
   });
-  res.redirect(`https://www.facebook.com/dialog/oauth?${params}`);
+  res.redirect(`https://www.instagram.com/oauth/authorize?${params}`);
 };
 
 const metaOAuthCallback = async (req, res, next) => {

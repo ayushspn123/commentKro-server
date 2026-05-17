@@ -3,7 +3,8 @@ const Token = require('../token/token.model');
 const { decrypt } = require('../../utils/crypto');
 const logger = require('../../utils/logger');
 
-const META_GRAPH = 'https://graph.facebook.com/v19.0';
+const env = require('../../config/env');
+const META_GRAPH = `https://graph.facebook.com/${env.META_GRAPH_API_VERSION}`;
 
 /**
  * GET /api/meta/posts?pageId=&platform=
