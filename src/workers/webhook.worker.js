@@ -14,6 +14,9 @@ const { redisConfig } = require('../config/redis');
 const { safeAdd } = require('../config/queues');
 const { processCommentEvent, processMessageEvent } = require('../modules/automation/automation.service');
 const logger = require('../utils/logger');
+const connectDB = require('../config/db');
+
+connectDB();
 
 const webhookWorker = new Worker(
   'webhook-events',

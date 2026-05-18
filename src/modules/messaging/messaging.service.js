@@ -46,7 +46,7 @@ const sendDM = async ({ userId, pageId, platform, recipientId, message, automati
 
   try {
     const endpoint = platform === 'instagram'
-      ? `${META_GRAPH_BASE}/me/messages`
+      ? `https://graph.instagram.com/${env.META_GRAPH_API_VERSION}/me/messages`
       : `${META_GRAPH_BASE}/me/messages`;
 
     const response = await axios.post(
@@ -79,7 +79,7 @@ const sendDM = async ({ userId, pageId, platform, recipientId, message, automati
       status: 'failed',
       errorCode: String(errorCode),
       errorMessage,
-      retryCount: { $inc: 1 },
+      $inc: { retryCount: 1 },
     });
 
     logger.error('DM send failed', { traceId, errorCode, errorMessage, recipientId });

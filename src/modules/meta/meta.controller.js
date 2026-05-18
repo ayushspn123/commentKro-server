@@ -4,7 +4,8 @@ const { decrypt } = require('../../utils/crypto');
 const logger = require('../../utils/logger');
 
 const env = require('../../config/env');
-const META_GRAPH = `https://graph.facebook.com/${env.META_GRAPH_API_VERSION}`;
+const META_GRAPH    = `https://graph.facebook.com/${env.META_GRAPH_API_VERSION}`;
+const META_GRAPH_IG = `https://graph.instagram.com/${env.META_GRAPH_API_VERSION}`;
 
 /**
  * GET /api/meta/posts?pageId=&platform=
@@ -15,7 +16,7 @@ const getPosts = async (req, res, next) => {
     const { pageId, platform = 'instagram' } = req.query;
     if (!pageId) return res.status(400).json({ success: false, message: 'pageId is required' });
 
-    const tokenDoc = await Token.findOne({ userId: req.user.id, pageId, platform });
+    const tokenDoc = await Token.findOne({ userId: req.user.id, pageId, platform }).select('+accessToken');
     if (!tokenDoc) return res.status(404).json({ success: false, message: 'No token found. Reconnect your account.' });
 
     const accessToken = decrypt(tokenDoc.accessToken);
@@ -23,20 +24,8 @@ const getPosts = async (req, res, next) => {
     let posts = [];
 
     if (platform === 'instagram') {
-      // For IG: first get the IG Business Account ID from the page
-      const igRes = await axios.get(`${META_GRAPH}/${pageId}`, {
-        params: {
-          fields: 'instagram_business_account',
-          access_token: accessToken,
-        },
-      });
-      const igAccountId = igRes.data?.instagram_business_account?.id;
-      if (!igAccountId) {
-        return res.json({ success: true, data: [] }); // No IG account linked
-      }
-
-      // Fetch recent media (posts + reels)
-      const mediaRes = await axios.get(`${META_GRAPH}/${igAccountId}/media`, {
+      // pageId is the IG Business Account ID — call IG Graph API directly
+      const mediaRes = await axios.get(`${META_GRAPH_IG}/${pageId}/media`, {
         params: {
           fields: 'id,caption,media_type,media_url,thumbnail_url,timestamp,permalink,like_count,comments_count',
           limit: 24,

@@ -135,7 +135,11 @@ const handleMetaCallback = async (userId, code) => {
   );
 
   const shortLivedToken = tokenRes.data.access_token;
-  const igUserId        = tokenRes.data.user_id?.toString();
+  // user_id from token exchange is app-scoped — fetch real IG Business Account ID from /me
+  const meIdRes  = await axios.get('https://graph.instagram.com/v21.0/me', {
+    params: { fields: 'id,username', access_token: shortLivedToken },
+  });
+  const igUserId = meIdRes.data.id?.toString();
 
   // ── Step 2: Exchange for long-lived token (60 days) ───────────────
   const longRes = await axios.get('https://graph.instagram.com/access_token', {
@@ -210,6 +214,8 @@ const handleMetaCallback = async (userId, code) => {
         pageId:   igUserId,
         pageName: profile.username || profile.name,
         platform: 'instagram',
+        username: profile.username   || null,
+        picture:  profile.profile_picture_url || null,
       },
     },
   });

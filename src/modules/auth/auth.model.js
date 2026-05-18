@@ -3,9 +3,11 @@ const bcrypt = require('bcryptjs');
 
 const connectedPageSchema = new mongoose.Schema(
   {
-    pageId: { type: String, required: true },
+    pageId:   { type: String, required: true },
     pageName: { type: String, required: true },
     platform: { type: String, enum: ['instagram', 'facebook'], required: true },
+    username: { type: String },          // IG @handle or FB page username
+    picture:  { type: String },          // profile picture URL from Meta API
     tokenRef: { type: mongoose.Schema.Types.ObjectId, ref: 'Token' },
   },
   { _id: false }

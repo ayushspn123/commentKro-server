@@ -8,6 +8,7 @@ const triggerSchema = new mongoose.Schema(
       required: true,
     },
     keywords: [{ type: String, trim: true }],
+    anyKeyword: { type: Boolean, default: false }, // trigger on ANY comment, ignore keywords
     matchType: {
       type: String,
       enum: ['any', 'all', 'exact'],
@@ -62,6 +63,25 @@ const automationSchema = new mongoose.Schema(
       validate: [(v) => v.length > 0, 'At least one action is required'],
     },
     isActive: { type: Boolean, default: true, index: true },
+
+    // ── DM Sent Reply ─────────────────────────────────────────────────
+    // After DM is sent, reply to the original comment to notify the user
+    replyOnDmSent: { type: Boolean, default: true },
+    replyOnDmSentMessage: {
+      type: String,
+      default: 'Hey! I just sent you a DM, please check your inbox 📬',
+      maxlength: 500,
+    },
+
+    // ── Follow Gate ───────────────────────────────────────────────────
+    // If true, check if commenter follows the page before sending DM.
+    // If they don't follow, reply to their comment with followPromptMessage.
+    requireFollow: { type: Boolean, default: false },
+    followPromptMessage: {
+      type: String,
+      default: 'Hey! Please follow our account first, then comment again to receive the link 🙏',
+      maxlength: 500,
+    },
 
     // ── Post-Level Targeting ──────────────────────────────────────────
     // 'all'      = triggers on every post/reel on the page

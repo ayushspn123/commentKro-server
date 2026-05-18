@@ -15,16 +15,33 @@ const { safeAdd } = require('../config/queues');
 const messagingService = require('../modules/messaging/messaging.service');
 const Automation = require('../modules/automation/automation.model');
 const logger = require('../utils/logger');
+const connectDB = require('../config/db');
+
+connectDB();
 
 const messageWorker = new Worker(
   'outbound-messages',
   async (job) => {
-    const { userId, pageId, platform, recipientId, commentId, automationId, message, traceId } = job.data;
+    const {
+      userId, pageId, platform, recipientId, commentId, automationId,
+      message, traceId, replyOnDmSent, replyOnDmSentMessage,
+    } = job.data;
 
     logger.info(`[MessageWorker] Job ${job.id} (${job.name}) → recipient: ${recipientId}`, { traceId });
 
     if (job.name === 'send_dm') {
       await messagingService.sendDM({ userId, pageId, platform, recipientId, message, automationId, traceId });
+
+      // After DM sent → reply to original comment notifying user
+      if (replyOnDmSent && commentId && replyOnDmSentMessage) {
+        await safeAdd('message', 'reply_comment', {
+          userId, pageId, platform, recipientId, commentId, automationId,
+          message: replyOnDmSentMessage,
+          traceId,
+        }, { delay: 2000 }); // small delay so DM arrives first
+        logger.info(`[MessageWorker] Queued comment reply after DM sent`, { traceId });
+      }
+
     } else if (job.name === 'reply_comment' && commentId) {
       await messagingService.replyToComment({ userId, pageId, commentId, message, traceId });
     }

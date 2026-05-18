@@ -1,7 +1,11 @@
+const axios = require('axios');
 const Automation = require('./automation.model');
+const Token = require('../token/token.model');
 const { safeAdd } = require('../../config/queues');
 const { matchesKeywords, interpolateTemplate } = require('../../utils/helpers');
+const { decrypt } = require('../../utils/crypto');
 const logger = require('../../utils/logger');
+const env = require('../../config/env');
 
 // ── Rate limit store (in-memory when Redis is unavailable) ────────────
 const inMemoryRL = new Map(); // key → { count, resetAt }
@@ -25,6 +29,30 @@ const checkRateLimit = async (key, maxPerHour) => {
     }
     entry.count += 1;
     return entry.count <= maxPerHour;
+  }
+};
+
+/**
+ * Check if a commenter follows the connected Instagram page.
+ * Returns true if they follow or if the check cannot be performed.
+ */
+const checkFollowsPage = async (userId, pageId, commenterId, platform) => {
+  if (platform !== 'instagram') return true; // only supported on Instagram
+  try {
+    const tokenDoc = await Token.findOne({ userId, pageId, platform }).select('+accessToken');
+    if (!tokenDoc) return true;
+    const accessToken = decrypt(tokenDoc.accessToken);
+
+    const res = await axios.get(
+      `https://graph.instagram.com/${env.META_GRAPH_API_VERSION}/${commenterId}`,
+      { params: { fields: 'follow_status', access_token: accessToken }, timeout: 5000 }
+    );
+    const status = res.data?.follow_status?.toLowerCase?.();
+    // follow_status values: 'followed_by', 'follows', 'not_following', 'blocking', etc.
+    return status === 'followed_by' || status === 'follows';
+  } catch (err) {
+    logger.warn(`[checkFollowsPage] Could not check follow status for ${commenterId}: ${err.message} — allowing through`);
+    return true; // fail open so automation still works if API errors
   }
 };
 
@@ -77,9 +105,31 @@ const processCommentEvent = async ({
     }
 
     // ── Keyword matching ──────────────────────────────────────────────
-    if (!matchesKeywords(commentText, keywords, matchType, caseSensitive)) {
+    const keywordMatched = automation.trigger.anyKeyword ||
+      matchesKeywords(commentText, keywords, matchType, caseSensitive);
+    if (!keywordMatched) {
       logger.debug(`[${traceId}] Automation ${automation._id} — keywords not matched`);
       continue;
+    }
+
+    // ── Follow gate ───────────────────────────────────────────────────
+    if (automation.requireFollow) {
+      const follows = await checkFollowsPage(automation.userId, pageId, commenterId, platform);
+      if (!follows) {
+        // Reply to comment asking them to follow first
+        await safeAdd('message', 'reply_comment', {
+          userId: automation.userId.toString(),
+          pageId,
+          platform,
+          recipientId: commenterId,
+          commentId,
+          automationId: automation._id.toString(),
+          message: automation.followPromptMessage,
+          traceId,
+        });
+        logger.info(`[${traceId}] Automation ${automation._id} — commenter ${commenterId} doesn't follow, sent follow prompt`);
+        continue;
+      }
     }
 
     // ── Per-automation hourly rate limit ──────────────────────────────
@@ -113,6 +163,10 @@ const processCommentEvent = async ({
           automationId: automation._id.toString(),
           message,
           traceId,
+          // Pass reply-on-DM-sent config so message worker can reply after success
+          replyOnDmSent: action.type === 'send_dm' ? (automation.replyOnDmSent ?? true) : false,
+          replyOnDmSentMessage: automation.replyOnDmSentMessage ||
+            'Hey! I just sent you a DM, please check your inbox 📬',
         },
         { delay: action.delay || 0 }
       );
@@ -258,11 +312,22 @@ const testAutomation = async (userId, automationId) => {
   };
 };
 
+const updateAutomation = async (userId, automationId, data) => {
+  const automation = await Automation.findOneAndUpdate(
+    { _id: automationId, userId },
+    { $set: data },
+    { new: true, runValidators: true }
+  );
+  if (!automation) throw Object.assign(new Error('Automation not found'), { statusCode: 404 });
+  return automation;
+};
+
 module.exports = {
   processCommentEvent,
   processMessageEvent,
   createAutomation,
   listAutomations,
+  updateAutomation,
   toggleAutomation,
   deleteAutomation,
   testAutomation,

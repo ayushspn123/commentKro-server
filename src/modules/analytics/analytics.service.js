@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Message = require('../messaging/message.model');
 const Automation = require('../automation/automation.model');
 
@@ -5,7 +6,7 @@ const Automation = require('../automation/automation.model');
  * Get message analytics for a user
  */
 const getMessageStats = async (userId, { from, to, platform } = {}) => {
-  const match = { userId: require('mongoose').Types.ObjectId(userId) };
+  const match = { userId: new mongoose.Types.ObjectId(userId) };
   if (platform) match.platform = platform;
   if (from || to) {
     match.createdAt = {};
@@ -13,7 +14,7 @@ const getMessageStats = async (userId, { from, to, platform } = {}) => {
     if (to) match.createdAt.$lte = new Date(to);
   }
 
-  const [stats] = await Message.aggregate([
+  const [msgStats] = await Message.aggregate([
     { $match: match },
     {
       $group: {
@@ -26,7 +27,18 @@ const getMessageStats = async (userId, { from, to, platform } = {}) => {
     },
   ]);
 
-  return stats || { total: 0, sent: 0, delivered: 0, failed: 0 };
+  // Sum triggered count from automations for "Comments Matched"
+  const [triggerStats] = await Automation.aggregate([
+    { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+    { $group: { _id: null, triggered: { $sum: '$stats.triggered' } } },
+  ]);
+
+  return {
+    total: triggerStats?.triggered ?? 0,
+    sent: msgStats?.sent ?? 0,
+    delivered: msgStats?.delivered ?? 0,
+    failed: msgStats?.failed ?? 0,
+  };
 };
 
 /**
@@ -36,7 +48,7 @@ const getDailyVolume = async (userId, days = 30) => {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   return Message.aggregate([
-    { $match: { userId: require('mongoose').Types.ObjectId(userId), createdAt: { $gte: since } } },
+    { $match: { userId: new mongoose.Types.ObjectId(userId), createdAt: { $gte: since } } },
     {
       $group: {
         _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },

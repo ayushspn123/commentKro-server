@@ -44,4 +44,11 @@ const testAutomation = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { createAutomation, listAutomations, getAutomation, toggleAutomation, deleteAutomation, testAutomation };
+const updateAutomation = async (req, res, next) => {
+  try {
+    const automation = await automationService.updateAutomation(req.user.id, req.params.id, req.body);
+    res.json({ success: true, data: automation });
+  } catch (err) { next(err); }
+};
+
+module.exports = { createAutomation, listAutomations, getAutomation, updateAutomation, toggleAutomation, deleteAutomation, testAutomation };
