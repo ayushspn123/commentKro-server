@@ -80,11 +80,20 @@ app.use('/api/tokens', tokenRoutes);
 app.use('/api/meta', metaRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  let redisStatus = 'disconnected';
+  try {
+    const { redisClient } = require('./config/redis');
+    await redisClient.ping();
+    redisStatus = 'connected';
+  } catch {}
+
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
     env: env.NODE_ENV,
+    redis: redisStatus,
+    workers: redisStatus === 'connected' ? 'running' : 'stopped',
   });
 });
 
