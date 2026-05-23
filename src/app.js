@@ -23,17 +23,7 @@ const metaRoutes = require('./modules/meta/meta.routes');
 const app = express();
 
 const corsOptions = {
-  origin: (origin, callback) => {
-    const allowed = [
-      env.FRONTEND_URL || 'http://localhost:3000',
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'https://comment-kro-client-vcjf.vercel.app',
-    ].map(u => u.replace(/\/$/, ''));
-    const originClean = (origin || '').replace(/\/$/, '');
-    if (!origin || allowed.includes(originClean)) return callback(null, true);
-    return callback(new Error(`CORS: origin ${origin} not allowed`));
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
