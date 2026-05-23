@@ -47,6 +47,7 @@ const refreshToken = async (req, res, next) => {
 const logout = (req, res) => {
   res.clearCookie('accessToken', cookieOptions());
   res.clearCookie('refreshToken', cookieOptions());
+  res.clearCookie('isLoggedIn', cookieOptions());
   res.json({ success: true, message: 'Logged out' });
 };
 
@@ -144,8 +145,13 @@ const cookieOptions = (maxAge) => ({
 });
 
 const setTokenCookies = (res, accessToken, refreshToken) => {
-  res.cookie('accessToken', accessToken, cookieOptions(15 * 60 * 1000));           // 15 min
-  res.cookie('refreshToken', refreshToken, cookieOptions(7 * 24 * 60 * 60 * 1000)); // 7 days
+  res.cookie('accessToken', accessToken, cookieOptions(15 * 60 * 1000));
+  res.cookie('refreshToken', refreshToken, cookieOptions(7 * 24 * 60 * 60 * 1000));
+  // Non-httpOnly flag cookie so Next.js middleware can detect login state
+  res.cookie('isLoggedIn', '1', {
+    ...cookieOptions(7 * 24 * 60 * 60 * 1000),
+    httpOnly: false,
+  });
 };
 
 // ─── Select Plan ──────────────────────────────────────────────────────
