@@ -165,23 +165,41 @@ const handleMetaCallback = async (userId, code) => {
 
   const profile = profileRes.data;
 
-  // ── Step 4: Discover the webhook page ID (Facebook Page linked to IG account) ──
-  // Meta webhooks send entry.id = the Facebook Page ID, not the IG User ID.
-  // We fetch linked FB pages to get this ID upfront so webhook matching is reliable.
-  let webhookPageId = igUserId; // fallback to igUserId if no FB page linked
+  // ── Step 4: Discover the webhook page ID ─────────────────────────
+  // Meta webhooks send entry.id which may differ from the IG User ID.
+  // Strategy: try multiple API calls to find the correct ID.
+  let webhookPageId = igUserId; // default fallback
+
+  // Try 1: Facebook Graph /me/accounts — works when IG is linked to a FB Page
   try {
     const pagesRes = await axios.get(`https://graph.facebook.com/${env.META_GRAPH_API_VERSION}/me/accounts`, {
-      params: { access_token: longLivedToken },
+      params: { fields: 'id,name,instagram_business_account', access_token: longLivedToken },
+      timeout: 5000,
     });
     const pages = pagesRes.data?.data || [];
-    if (pages.length > 0) {
-      // Find the FB page linked to this Instagram account
+    // Find a page whose instagram_business_account.id matches our igUserId
+    const matched = pages.find(p => p.instagram_business_account?.id === igUserId);
+    if (matched) {
+      webhookPageId = matched.id;
+      logger.info(`Webhook pageId resolved via FB pages: ${webhookPageId}`);
+    } else if (pages.length > 0) {
       webhookPageId = pages[0].id;
-      logger.info(`Discovered Facebook Page ID for webhooks: ${webhookPageId} (igUserId: ${igUserId})`);
+      logger.info(`Webhook pageId set to first FB page: ${webhookPageId}`);
     }
   } catch {
-    // If /me/accounts fails (pure IG token), fall back to igUserId
-    logger.warn(`Could not fetch Facebook pages — using igUserId as webhookPageId`);
+    // Try 2: Instagram API — get linked pages directly
+    try {
+      const igPagesRes = await axios.get(`https://graph.instagram.com/${env.META_GRAPH_API_VERSION}/${igUserId}`, {
+        params: { fields: 'id,username,page', access_token: longLivedToken },
+        timeout: 5000,
+      });
+      if (igPagesRes.data?.page?.id) {
+        webhookPageId = igPagesRes.data.page.id;
+        logger.info(`Webhook pageId resolved via IG page field: ${webhookPageId}`);
+      }
+    } catch {
+      logger.warn(`Could not resolve webhook pageId — defaulting to igUserId ${igUserId}`);
+    }
   }
 
   logger.info(`Instagram profile: @${profile.username} (igUserId:${igUserId}, webhookPageId:${webhookPageId})`);
@@ -225,7 +243,7 @@ const handleMetaCallback = async (userId, code) => {
     logger.warn(`Webhook subscription failed: ${subErr.response?.data?.error?.message || subErr.message}`);
   }
 
-  // ── Step 6: Save to user's connectedPages (no duplicates) ─────────
+  // ── Step 7: Save to user's connectedPages (no duplicates) ─────────
   await User.findByIdAndUpdate(userId, {
     $pull: { connectedPages: { pageId: igUserId } },
   });
