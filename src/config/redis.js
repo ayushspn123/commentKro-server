@@ -6,6 +6,8 @@ const redisConfig = {
   host: env.REDIS_HOST,
   port: parseInt(env.REDIS_PORT, 10),
   password: env.REDIS_PASSWORD || undefined,
+  // Enable TLS for Upstash or any cloud Redis that requires SSL
+  ...(env.REDIS_TLS === 'true' && { tls: {} }),
   maxRetriesPerRequest: null,    // Required for BullMQ
   enableReadyCheck: false,
   // In dev, stop retrying after 3 attempts instead of retrying forever
