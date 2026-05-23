@@ -8,16 +8,12 @@
  *   - reply_comment → calls Meta Graph API to reply to a comment
  * ─────────────────────────────────────────────────────────────────────
  */
-require('dotenv').config();
 const { Worker } = require('bullmq');
 const { redisConfig } = require('../config/redis');
 const { safeAdd } = require('../config/queues');
 const messagingService = require('../modules/messaging/messaging.service');
 const Automation = require('../modules/automation/automation.model');
 const logger = require('../utils/logger');
-const connectDB = require('../config/db');
-
-connectDB();
 
 const messageWorker = new Worker(
   'outbound-messages',

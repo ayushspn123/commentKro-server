@@ -21,6 +21,15 @@ const startServer = async () => {
     logger.warn('⚠️  Redis unavailable — queue features disabled. Start Redis to enable workers.');
   }
 
+  // ── Workers (run in-process when Redis is available) ──────────────
+  try {
+    require('./workers/webhook.worker');
+    require('./workers/message.worker');
+    logger.info('✅ Workers started in-process');
+  } catch (err) {
+    logger.warn(`⚠️  Workers failed to start: ${err.message}`);
+  }
+
   // ── HTTP Server ────────────────────────────────────────────────────
   const server = app.listen(PORT, () => {
     logger.info(`🚀 API Server running on port ${PORT} [${env.NODE_ENV}]`);
