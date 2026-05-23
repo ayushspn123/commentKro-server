@@ -36,6 +36,7 @@ const handleInstagramWebhook = async (req, res) => {
 
   const traceId = generateTraceId();
   const payload = JSON.parse(rawBody.toString());
+  logger.info(`Raw Instagram webhook payload: ${JSON.stringify(payload)}`, { traceId });
 
   // Fan out entries to the webhook queue
   const entries = payload.entry || [];
