@@ -17,12 +17,12 @@ const logger = winston.createLogger({
   ],
 });
 
-if (env.NODE_ENV !== 'production') {
-  logger.add(
-    new winston.transports.Console({
-      format: combine(colorize(), simple()),
-    })
-  );
-}
+logger.add(
+  new winston.transports.Console({
+    format: env.NODE_ENV === 'production'
+      ? combine(timestamp(), json())
+      : combine(colorize(), simple()),
+  })
+);
 
 module.exports = logger;
