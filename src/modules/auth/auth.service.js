@@ -164,18 +164,37 @@ const handleMetaCallback = async (userId, code) => {
   });
 
   const profile = profileRes.data;
-  const webhookPageId = igUserId; // same ID used in webhooks for Business Login
+
+  // ── Step 4: Discover the webhook page ID (Facebook Page linked to IG account) ──
+  // Meta webhooks send entry.id = the Facebook Page ID, not the IG User ID.
+  // We fetch linked FB pages to get this ID upfront so webhook matching is reliable.
+  let webhookPageId = igUserId; // fallback to igUserId if no FB page linked
+  try {
+    const pagesRes = await axios.get(`https://graph.facebook.com/${env.META_GRAPH_API_VERSION}/me/accounts`, {
+      params: { access_token: longLivedToken },
+    });
+    const pages = pagesRes.data?.data || [];
+    if (pages.length > 0) {
+      // Find the FB page linked to this Instagram account
+      webhookPageId = pages[0].id;
+      logger.info(`Discovered Facebook Page ID for webhooks: ${webhookPageId} (igUserId: ${igUserId})`);
+    }
+  } catch {
+    // If /me/accounts fails (pure IG token), fall back to igUserId
+    logger.warn(`Could not fetch Facebook pages — using igUserId as webhookPageId`);
+  }
+
   logger.info(`Instagram profile: @${profile.username} (igUserId:${igUserId}, webhookPageId:${webhookPageId})`);
 
-  // ── Step 4: Save encrypted token ──────────────────────────────────
+  // ── Step 5: Save encrypted token ──────────────────────────────────
   const encryptedToken = encrypt(longLivedToken);
 
   await Token.findOneAndUpdate(
     { userId, pageId: igUserId, platform: 'instagram' },
     {
       userId,
-      pageId:        igUserId,       // stored as ig_user_id
-      webhookPageId: webhookPageId,  // page_id used in webhooks
+      pageId:        igUserId,
+      webhookPageId: webhookPageId,  // correctly resolved at OAuth time
       platform:      'instagram',
       accessToken:   encryptedToken,
       expiresAt,
@@ -189,7 +208,7 @@ const handleMetaCallback = async (userId, code) => {
     { upsert: true, new: true }
   );
 
-  // ── Step 5: Subscribe to webhooks ─────────────────────────────────
+  // ── Step 6: Subscribe to webhooks ─────────────────────────────────
   try {
     await axios.post(
       `https://graph.instagram.com/v21.0/${igUserId}/subscribed_apps`,

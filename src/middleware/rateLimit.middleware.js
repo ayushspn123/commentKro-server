@@ -17,11 +17,7 @@ const createLimiter = (options) => {
         retryAfter: Math.ceil(options.windowMs / 1000),
       });
     },
-    skip: () => {
-      // In dev, skip rate limiting entirely if Redis isn't available
-      // (express-rate-limit's default in-memory store is fine for dev)
-      return false;
-    },
+    skip: (req) => req.method === 'OPTIONS',
     ...options,
   };
 

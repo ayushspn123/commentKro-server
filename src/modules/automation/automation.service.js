@@ -87,14 +87,31 @@ const processCommentEvent = async ({
     $or: [{ pageId }, { webhookPageId: pageId }],
   }).select('pageId userId');
 
-  // If not found, find a real token (non-demo) without a webhookPageId and map it
+  // If not found, find a token without webhookPageId whose userId has active automations for this platform
   if (!matchingToken) {
-    matchingToken = await Token.findOneAndUpdate(
-      { platform, webhookPageId: { $exists: false }, pageId: { $not: /^demo/ } },
-      { $set: { webhookPageId: pageId } },
-      { new: true }
-    ).select('pageId userId');
-    if (matchingToken) logger.info(`[${traceId}] Auto-mapped webhookPageId ${pageId} to token pageId ${matchingToken.pageId}`);
+    const candidates = await Token.find({
+      platform,
+      webhookPageId: { $exists: false },
+      pageId: { $not: /^demo/ },
+    }).select('pageId userId');
+
+    for (const candidate of candidates) {
+      const hasAutomations = await Automation.exists({
+        userId: candidate.userId,
+        platform,
+        isActive: true,
+        'trigger.type': 'comment',
+      });
+      if (hasAutomations) {
+        matchingToken = await Token.findOneAndUpdate(
+          { _id: candidate._id },
+          { $set: { webhookPageId: pageId } },
+          { new: true }
+        ).select('pageId userId');
+        logger.info(`[${traceId}] Auto-mapped webhookPageId ${pageId} to token pageId ${matchingToken.pageId}`);
+        break;
+      }
+    }
   }
 
   logger.info(`[${traceId}] Token lookup for pageId ${pageId}: ${matchingToken ? `userId=${matchingToken.userId}` : 'not found'}`);

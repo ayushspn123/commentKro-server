@@ -11,7 +11,11 @@ const META_GRAPH_BASE = `https://graph.facebook.com/${env.META_GRAPH_API_VERSION
  * Fetch a decrypted access token for a page.
  */
 const getPageAccessToken = async (userId, pageId, platform) => {
-  const token = await Token.findOne({ userId, pageId, platform }).select('+accessToken');
+  const token = await Token.findOne({
+    userId,
+    platform,
+    $or: [{ pageId }, { webhookPageId: pageId }],
+  }).select('+accessToken');
   if (!token) throw Object.assign(new Error(`No token found for page ${pageId}`), { statusCode: 404 });
   if (token.expiresAt < new Date()) throw Object.assign(new Error('Access token expired'), { statusCode: 401 });
   return decrypt(token.accessToken);
