@@ -10,26 +10,12 @@ const startServer = async () => {
   // ── MongoDB (required) ─────────────────────────────────────────────
   await connectDB();
 
-  // ── Redis (optional — only needed for queue workers) ───────────────
-  // In dev you can run without Redis; auth/API routes work fine.
-  // Workers (npm run worker) will fail separately if Redis is unavailable.
-  try {
-    const { redisClient } = require('./config/redis');
-    await redisClient.ping();
-    logger.info('✅ Redis connected');
-  } catch {
-    logger.warn('⚠️  Redis unavailable — queue features disabled. Start Redis to enable workers.');
-  }
-
-  // ── Workers (run in-process when Redis is available) ──────────────
-  try {
-    require('./workers/webhook.worker');
-    require('./workers/message.worker');
-    require('./workers/analytics.worker');
-    logger.info('✅ Workers started in-process');
-  } catch (err) {
-    logger.warn(`⚠️  Workers failed to start: ${err.message}`);
-  }
+  // ── Workers (BullMQ manages its own Redis connection) ─────────────
+  logger.info('Starting workers...');
+  require('./workers/webhook.worker');
+  require('./workers/message.worker');
+  require('./workers/analytics.worker');
+  logger.info('✅ All workers started in-process');
 
   // ── HTTP Server ────────────────────────────────────────────────────
   const server = app.listen(PORT, () => {
