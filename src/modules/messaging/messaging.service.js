@@ -98,8 +98,9 @@ const replyToComment = async ({ userId, pageId, commentId, message, traceId }) =
   const accessToken = await getPageAccessToken(userId, pageId, 'instagram');
 
   try {
+    // Instagram comment replies must use graph.instagram.com, not graph.facebook.com
     await axios.post(
-      `${META_GRAPH_BASE}/${commentId}/replies`,
+      `https://graph.instagram.com/${env.META_GRAPH_API_VERSION}/${commentId}/replies`,
       { message },
       { params: { access_token: accessToken } }
     );
