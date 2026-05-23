@@ -154,25 +154,27 @@ const handleMetaCallback = async (userId, code) => {
   const expiresIn      = longRes.data.expires_in || 5_183_944; // ~60 days
   const expiresAt      = new Date(Date.now() + expiresIn * 1000);
 
-  // ── Step 3: Get Instagram user profile ────────────────────────────
+  // ── Step 3: Get Instagram user profile + page_id ─────────────────
   const profileRes = await axios.get(`https://graph.instagram.com/v21.0/me`, {
     params: {
-      fields:       'id,name,username,profile_picture_url',
+      fields:       'id,name,username,profile_picture_url,page_id',
       access_token: longLivedToken,
     },
   });
 
   const profile = profileRes.data;
-  logger.info(`Instagram profile: @${profile.username} (${profile.id})`);
+  // page_id is the Facebook Page ID used in webhooks; fall back to igUserId if not present
+  const webhookPageId = profile.page_id?.toString() || igUserId;
+  logger.info(`Instagram profile: @${profile.username} (igUserId:${igUserId}, webhookPageId:${webhookPageId})`);
 
   // ── Step 4: Save encrypted token ──────────────────────────────────
   const encryptedToken = encrypt(longLivedToken);
 
   await Token.findOneAndUpdate(
-    { userId, pageId: igUserId, platform: 'instagram' },
+    { userId, pageId: webhookPageId, platform: 'instagram' },
     {
       userId,
-      pageId:      igUserId,
+      pageId:      webhookPageId,
       platform:    'instagram',
       accessToken: encryptedToken,
       expiresAt,
@@ -205,13 +207,13 @@ const handleMetaCallback = async (userId, code) => {
 
   // ── Step 6: Save to user's connectedPages (no duplicates) ─────────
   await User.findByIdAndUpdate(userId, {
-    $pull: { connectedPages: { pageId: igUserId } },
+    $pull: { connectedPages: { pageId: webhookPageId } },
   });
   await User.findByIdAndUpdate(userId, {
     metaUserId: igUserId,
     $push: {
       connectedPages: {
-        pageId:   igUserId,
+        pageId:   webhookPageId,
         pageName: profile.username || profile.name,
         platform: 'instagram',
         username: profile.username   || null,
@@ -220,8 +222,8 @@ const handleMetaCallback = async (userId, code) => {
     },
   });
 
-  logger.info(`Instagram Business Login done for user ${userId} — @${profile.username} connected`);
-  return { connectedPages: [{ pageId: igUserId, pageName: profile.username, platform: 'instagram' }] };
+  logger.info(`Instagram Business Login done for user ${userId} — @${profile.username} connected (pageId:${webhookPageId})`);
+  return { connectedPages: [{ pageId: webhookPageId, pageName: profile.username, platform: 'instagram' }] };
 };
 
 module.exports = { register, login, refreshAccessToken, forgotPassword, resetPassword, handleMetaCallback };
