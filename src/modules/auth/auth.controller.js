@@ -1,5 +1,6 @@
 const authService = require('./auth.service');
 const env = require('../../config/env');
+const logger = require('../../utils/logger');
 
 // ─── Register ─────────────────────────────────────────────────────────
 const register = async (req, res, next) => {
