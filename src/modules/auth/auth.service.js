@@ -158,14 +158,13 @@ const handleMetaCallback = async (userId, code) => {
   // ── Step 3: Get Instagram user profile + page_id ─────────────────
   const profileRes = await axios.get(`https://graph.instagram.com/v21.0/me`, {
     params: {
-      fields:       'id,name,username,profile_picture_url,page_id',
+      fields:       'id,name,username,profile_picture_url',
       access_token: longLivedToken,
     },
   });
 
   const profile = profileRes.data;
-  // page_id is the Facebook Page ID used in webhooks; fall back to igUserId if not present
-  const webhookPageId = profile.page_id?.toString() || igUserId;
+  const webhookPageId = igUserId; // same ID used in webhooks for Business Login
   logger.info(`Instagram profile: @${profile.username} (igUserId:${igUserId}, webhookPageId:${webhookPageId})`);
 
   // ── Step 4: Save encrypted token ──────────────────────────────────
