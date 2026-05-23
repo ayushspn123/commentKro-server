@@ -127,6 +127,7 @@ const metaOAuthCallback = async (req, res, next) => {
       `${env.FRONTEND_URL}/dashboard/settings/connections?connected=true&pages=${result.connectedPages.length}`
     );
   } catch (err) {
+    logger.error(`metaOAuthCallback error: ${err.response?.data ? JSON.stringify(err.response.data) : err.message}`);
     next(err);
   }
 };

@@ -134,6 +134,7 @@ const handleMetaCallback = async (userId, code) => {
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   );
 
+  logger.info(`Token exchange response: ${JSON.stringify(tokenRes.data)}`);
   const shortLivedToken = tokenRes.data.access_token;
   // user_id from token exchange is app-scoped — fetch real IG Business Account ID from /me
   const meIdRes  = await axios.get('https://graph.instagram.com/v21.0/me', {
