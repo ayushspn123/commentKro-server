@@ -27,12 +27,14 @@ app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow both 3000 and 3001 for local dev
       const allowed = [
         env.FRONTEND_URL || 'http://localhost:3000',
+        'http://localhost:3000',
         'http://localhost:3001',
-      ];
-      if (!origin || allowed.includes(origin)) return callback(null, true);
+        'https://comment-kro-client-vcjf.vercel.app',
+      ].map(u => u.replace(/\/$/, '')); // strip trailing slashes
+      const originClean = (origin || '').replace(/\/$/, '');
+      if (!origin || allowed.includes(originClean)) return callback(null, true);
       return callback(new Error(`CORS: origin ${origin} not allowed`));
     },
     credentials: true,
