@@ -79,12 +79,23 @@ const processCommentEvent = async ({
   platform = 'instagram',
   traceId,
 }) => {
-  // Look up token by pageId or webhookPageId to get the userId, then match automations by userId
   const Token = require('../token/token.model');
-  const matchingToken = await Token.findOne({
+
+  // Try to find token by direct pageId match or webhookPageId
+  let matchingToken = await Token.findOne({
     platform,
     $or: [{ pageId }, { webhookPageId: pageId }],
   }).select('pageId userId');
+
+  // If not found, there's only one Instagram account — use it and store webhookPageId for future
+  if (!matchingToken) {
+    matchingToken = await Token.findOneAndUpdate(
+      { platform, webhookPageId: { $exists: false } },
+      { $set: { webhookPageId: pageId } },
+      { new: true }
+    ).select('pageId userId');
+    if (matchingToken) logger.info(`[${traceId}] Auto-mapped webhookPageId ${pageId} to token pageId ${matchingToken.pageId}`);
+  }
 
   logger.info(`[${traceId}] Token lookup for pageId ${pageId}: ${matchingToken ? `userId=${matchingToken.userId}` : 'not found'}`);
 
