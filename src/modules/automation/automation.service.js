@@ -79,12 +79,10 @@ const processCommentEvent = async ({
   platform = 'instagram',
   traceId,
 }) => {
-  const automations = await Automation.find({
-    pageId,
-    isActive: true,
-    'trigger.type': 'comment',
-    platform,
-  });
+  const allAutomations = await Automation.find({ isActive: true, 'trigger.type': 'comment', platform });
+  logger.info(`[${traceId}] All active comment automations: ${allAutomations.map(a => `${a.name}(pageId:${a.pageId})`).join(', ') || 'none'}`);
+
+  const automations = allAutomations.filter(a => a.pageId === pageId);
 
   logger.info(`[${traceId}] Processing comment on page ${pageId} — ${automations.length} automation(s) to check`);
 
