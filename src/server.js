@@ -25,6 +25,7 @@ const startServer = async () => {
   try {
     require('./workers/webhook.worker');
     require('./workers/message.worker');
+    require('./workers/analytics.worker');
     logger.info('✅ Workers started in-process');
   } catch (err) {
     logger.warn(`⚠️  Workers failed to start: ${err.message}`);
