@@ -35,6 +35,24 @@ const webhookWorker = new Worker(
 const processInstagramEntry = async (entry, traceId) => {
   const pageId = entry.id;
 
+  // Instagram Business Login format: entry.field + entry.value (no changes array)
+  if (entry.field === 'comments' && entry.value) {
+    const { id: commentId, text: commentText, from, media } = entry.value;
+    if (from?.id && commentText) {
+      await processCommentEvent({
+        pageId,
+        commenterId: from.id,
+        commentText,
+        commentId,
+        mediaId: media?.id,
+        platform: 'instagram',
+        traceId,
+      });
+    }
+    return;
+  }
+
+  // Facebook Login format: entry.changes array (fallback)
   for (const change of entry.changes || []) {
     if (change.field !== 'comments') continue;
 
