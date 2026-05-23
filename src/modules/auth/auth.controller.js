@@ -138,7 +138,7 @@ const metaOAuthCallback = async (req, res, next) => {
 const cookieOptions = (maxAge) => ({
   httpOnly: true,
   secure: env.NODE_ENV === 'production',
-  sameSite: env.NODE_ENV === 'production' ? 'strict' : 'lax',
+  sameSite: env.NODE_ENV === 'production' ? 'none' : 'lax',
   path: '/',
   ...(maxAge && { maxAge }),
 });
