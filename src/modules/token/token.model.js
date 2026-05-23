@@ -9,6 +9,7 @@ const tokenSchema = new mongoose.Schema(
       index: true,
     },
     pageId: { type: String, required: true, index: true },
+    webhookPageId: { type: String, index: true }, // Instagram page_id used in webhooks
     platform: {
       type: String,
       enum: ['instagram', 'facebook'],

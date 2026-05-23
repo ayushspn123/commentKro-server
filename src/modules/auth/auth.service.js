@@ -171,14 +171,15 @@ const handleMetaCallback = async (userId, code) => {
   const encryptedToken = encrypt(longLivedToken);
 
   await Token.findOneAndUpdate(
-    { userId, pageId: webhookPageId, platform: 'instagram' },
+    { userId, pageId: igUserId, platform: 'instagram' },
     {
       userId,
-      pageId:      webhookPageId,
-      platform:    'instagram',
-      accessToken: encryptedToken,
+      pageId:        igUserId,       // stored as ig_user_id
+      webhookPageId: webhookPageId,  // page_id used in webhooks
+      platform:      'instagram',
+      accessToken:   encryptedToken,
       expiresAt,
-      refreshedAt: new Date(),
+      refreshedAt:   new Date(),
       scopes: [
         'instagram_business_basic',
         'instagram_business_manage_messages',
@@ -207,13 +208,13 @@ const handleMetaCallback = async (userId, code) => {
 
   // ── Step 6: Save to user's connectedPages (no duplicates) ─────────
   await User.findByIdAndUpdate(userId, {
-    $pull: { connectedPages: { pageId: webhookPageId } },
+    $pull: { connectedPages: { pageId: igUserId } },
   });
   await User.findByIdAndUpdate(userId, {
     metaUserId: igUserId,
     $push: {
       connectedPages: {
-        pageId:   webhookPageId,
+        pageId:   igUserId,
         pageName: profile.username || profile.name,
         platform: 'instagram',
         username: profile.username   || null,
@@ -222,8 +223,8 @@ const handleMetaCallback = async (userId, code) => {
     },
   });
 
-  logger.info(`Instagram Business Login done for user ${userId} — @${profile.username} connected (pageId:${webhookPageId})`);
-  return { connectedPages: [{ pageId: webhookPageId, pageName: profile.username, platform: 'instagram' }] };
+  logger.info(`Instagram Business Login done for user ${userId} — @${profile.username} connected (igUserId:${igUserId}, webhookPageId:${webhookPageId})`);
+  return { connectedPages: [{ pageId: igUserId, pageName: profile.username, platform: 'instagram' }] };
 };
 
 module.exports = { register, login, refreshAccessToken, forgotPassword, resetPassword, handleMetaCallback };

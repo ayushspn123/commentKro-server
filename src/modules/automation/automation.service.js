@@ -79,10 +79,22 @@ const processCommentEvent = async ({
   platform = 'instagram',
   traceId,
 }) => {
+  // Instagram webhooks send page_id (17841404120653247) but we stored ig_user_id (27351538241106656)
+  // Look up the token to find the stored pageId that corresponds to this webhook pageId
+  const Token = require('../token/token.model');
+  const matchingToken = await Token.findOne({
+    platform,
+    $or: [{ pageId }, { webhookPageId: pageId }],
+  }).select('pageId');
+
+  const matchPageIds = new Set([pageId]);
+  if (matchingToken) matchPageIds.add(matchingToken.pageId);
+
   const allAutomations = await Automation.find({ isActive: true, 'trigger.type': 'comment', platform });
   logger.info(`[${traceId}] All active comment automations: ${allAutomations.map(a => `${a.name}(pageId:${a.pageId})`).join(', ') || 'none'}`);
+  logger.info(`[${traceId}] Matching pageIds: ${[...matchPageIds].join(', ')}`);
 
-  const automations = allAutomations.filter(a => a.pageId === pageId);
+  const automations = allAutomations.filter(a => matchPageIds.has(a.pageId));
 
   logger.info(`[${traceId}] Processing comment on page ${pageId} — ${automations.length} automation(s) to check`);
 
