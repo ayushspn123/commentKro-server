@@ -87,10 +87,10 @@ const processCommentEvent = async ({
     $or: [{ pageId }, { webhookPageId: pageId }],
   }).select('pageId userId');
 
-  // If not found, there's only one Instagram account — use it and store webhookPageId for future
+  // If not found, find a real token (non-demo) without a webhookPageId and map it
   if (!matchingToken) {
     matchingToken = await Token.findOneAndUpdate(
-      { platform, webhookPageId: { $exists: false } },
+      { platform, webhookPageId: { $exists: false }, pageId: { $not: /^demo/ } },
       { $set: { webhookPageId: pageId } },
       { new: true }
     ).select('pageId userId');
