@@ -35,6 +35,28 @@ const getPageAccessToken = async (userId, pageId, platform) => {
 const sendDM = async ({ userId, pageId, platform, recipientId, message, automationId, traceId }) => {
   const accessToken = await getPageAccessToken(userId, pageId, platform);
 
+  // Enforce daily DM limit
+  const User = require('../auth/auth.model');
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const [user, todayCount] = await Promise.all([
+    User.findById(userId),
+    Message.countDocuments({
+      userId,
+      direction: 'outbound',
+      type: 'dm',
+      createdAt: { $gte: startOfDay },
+    }),
+  ]);
+  const dailyLimit = user?.planLimits?.dailyDMs ?? 1000;
+  if (todayCount >= dailyLimit) {
+    logger.warn(`[${traceId}] Daily DM limit reached for user ${userId} (${todayCount}/${dailyLimit})`);
+    throw Object.assign(
+      new Error(`Daily DM limit reached (${dailyLimit}/day). Upgrade your plan to send more.`),
+      { statusCode: 429 }
+    );
+  }
+
   // Log the message as queued
   const msgDoc = await Message.create({
     userId,
@@ -53,18 +75,26 @@ const sendDM = async ({ userId, pageId, platform, recipientId, message, automati
       ? `https://graph.instagram.com/${env.META_GRAPH_API_VERSION}/me/messages`
       : `${META_GRAPH_BASE}/me/messages`;
 
-    const response = await axios.post(
-      endpoint,
-      {
-        recipient: { id: recipientId },
-        message: { text: message },
-        messaging_type: 'RESPONSE',
-      },
-      {
-        params: { access_token: accessToken },
-        timeout: 10000,
+    // Try RESPONSE first (within 24hr comment/message window)
+    // If rejected (error 10 = outside window), retry with HUMAN_AGENT tag (7-day window)
+    let response;
+    try {
+      response = await axios.post(
+        endpoint,
+        { recipient: { id: recipientId }, message: { text: message }, messaging_type: 'RESPONSE' },
+        { params: { access_token: accessToken }, timeout: 10000 }
+      );
+    } catch (firstErr) {
+      if (firstErr.response?.data?.error?.code === 10) {
+        response = await axios.post(
+          endpoint,
+          { recipient: { id: recipientId }, message: { text: message }, messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' },
+          { params: { access_token: accessToken }, timeout: 10000 }
+        );
+      } else {
+        throw firstErr;
       }
-    );
+    }
 
     const metaMessageId = response.data.message_id;
     await Message.findByIdAndUpdate(msgDoc._id, {

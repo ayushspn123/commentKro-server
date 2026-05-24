@@ -90,10 +90,28 @@ const forgotPassword = async (email) => {
   user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
   await user.save({ validateBeforeSave: false });
 
-  // TODO: send email with link → `${env.FRONTEND_URL}/reset-password?token=${rawToken}`
   logger.info(`Password reset token generated for ${email}`);
 
-  // Dev: return token directly so you can test without email setup
+  const resetLink = `${env.FRONTEND_URL}/reset-password?token=${rawToken}`;
+  const { sendEmail } = require('../../utils/email');
+  await sendEmail({
+    to: email,
+    subject: 'Reset your Comment Please password',
+    html: `
+      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+        <h2 style="color:#dc2743;margin-bottom:8px">Reset your password</h2>
+        <p style="color:#555;margin-bottom:24px">Click the button below to reset your Comment Please password. This link expires in 1 hour.</p>
+        <a href="${resetLink}"
+          style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#f09433,#dc2743,#bc1888);color:white;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">
+          Reset Password
+        </a>
+        <p style="color:#999;font-size:12px;margin-top:24px">If you didn't request this, you can safely ignore this email.</p>
+        <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+        <p style="color:#ccc;font-size:11px">Comment Please · Instagram DM Automation</p>
+      </div>
+    `,
+  }).catch(err => logger.warn(`Reset email failed: ${err.message}`));
+
   const devToken = env.NODE_ENV !== 'production' ? rawToken : undefined;
   return { message: 'If this email exists, a reset link has been sent.', devToken };
 };

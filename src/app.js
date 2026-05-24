@@ -19,6 +19,8 @@ const automationRoutes = require('./modules/automation/automation.routes');
 const analyticsRoutes = require('./modules/analytics/analytics.routes');
 const tokenRoutes = require('./modules/token/token.routes');
 const metaRoutes = require('./modules/meta/meta.routes');
+const messagesRoutes = require('./modules/messages/messages.routes');
+const paymentRoutes = require('./modules/payment/payment.routes');
 
 const app = express();
 
@@ -58,6 +60,8 @@ app.use('/api/automations', express.json({ limit: '1mb' }));
 app.use('/api/analytics', express.json({ limit: '1mb' }));
 app.use('/api/tokens', express.json({ limit: '1mb' }));
 app.use('/api/meta', express.json({ limit: '1mb' }));
+app.use('/api/messages', express.json({ limit: '1mb' }));
+app.use('/api/payment', express.json({ limit: '1mb' }));
 app.use(compression());
 app.use(cookieParser());
 
@@ -71,6 +75,8 @@ app.use('/api/automations', automationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/tokens', tokenRoutes);
 app.use('/api/meta', metaRoutes);
+app.use('/api/messages', messagesRoutes);
+app.use('/api/payment', paymentRoutes);
 
 // ── Health check ──────────────────────────────────────────────────────
 app.get('/api/health', async (req, res) => {

@@ -76,9 +76,9 @@ const resetPassword = async (req, res, next) => {
 
 // ─── Meta OAuth ───────────────────────────────────────────────────────
 const metaOAuthRedirect = (req, res) => {
-  // Encode the userId in state so we can retrieve it in the callback
-  // (Meta's redirect won't carry the session cookie)
-  const state = Buffer.from(JSON.stringify({ userId: req.user.id })).toString('base64url');
+  // Encode userId + optional returnTo in state (Meta redirect won't carry session cookie)
+  const returnTo = req.query.returnTo || '/dashboard/settings/connections';
+  const state = Buffer.from(JSON.stringify({ userId: req.user.id, returnTo })).toString('base64url');
 
   const params = new URLSearchParams({
     force_reauth:  'true',
@@ -103,8 +103,14 @@ const metaOAuthCallback = async (req, res, next) => {
 
     // Handle user denying permission
     if (error) {
+      let errReturnTo = '/dashboard/settings/connections';
+      try {
+        const decoded = JSON.parse(Buffer.from(state || '', 'base64url').toString());
+        const rTo = decoded.returnTo;
+        if (['/dashboard/settings/connections', '/onboarding/connect'].includes(rTo)) errReturnTo = rTo;
+      } catch { /* use default */ }
       return res.redirect(
-        `${env.FRONTEND_URL}/dashboard/settings/connections?error=${encodeURIComponent(error_description || error)}`
+        `${env.FRONTEND_URL}${errReturnTo}?error=${encodeURIComponent(error_description || error)}`
       );
     }
 
@@ -112,20 +118,25 @@ const metaOAuthCallback = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Missing code or state' });
     }
 
-    // Decode userId from state
-    let userId;
+    // Decode userId + returnTo from state
+    let userId, returnTo;
     try {
       const decoded = JSON.parse(Buffer.from(state, 'base64url').toString());
       userId = decoded.userId;
+      returnTo = decoded.returnTo || '/dashboard/settings/connections';
     } catch {
       return res.status(400).json({ success: false, message: 'Invalid state parameter' });
     }
+
+    // Restrict returnTo to known safe paths to prevent open redirect
+    const allowedPaths = ['/dashboard/settings/connections', '/onboarding/connect'];
+    if (!allowedPaths.includes(returnTo)) returnTo = '/dashboard/settings/connections';
 
     if (!userId) return res.status(400).json({ success: false, message: 'Missing userId in state' });
 
     const result = await authService.handleMetaCallback(userId, code);
     res.redirect(
-      `${env.FRONTEND_URL}/dashboard/settings/connections?connected=true&pages=${result.connectedPages.length}`
+      `${env.FRONTEND_URL}${returnTo}?connected=true&pages=${result.connectedPages.length}`
     );
   } catch (err) {
     logger.error(`metaOAuthCallback error: ${err.response?.data ? JSON.stringify(err.response.data) : err.message}`);
@@ -157,23 +168,27 @@ const setTokenCookies = (res, accessToken, refreshToken) => {
 };
 
 // ─── Select Plan ──────────────────────────────────────────────────────
+const PLAN_LIMITS = {
+  free:       { dailyDMs: 1000,  automations: 3 },
+  monthly:    { dailyDMs: 10000, automations: 100 },
+  annual:     { dailyDMs: 50000, automations: 9999 },
+  pro:        { dailyDMs: 50000, automations: 9999 },
+  enterprise: { dailyDMs: 999999, automations: 9999 },
+};
+
+// Only allows downgrade to free — paid upgrades must go through /api/payment/create-order + /verify
 const selectPlan = async (req, res, next) => {
   try {
     const { plan } = req.body;
-    const valid = ['free', 'monthly', 'annual'];
-    if (!valid.includes(plan)) {
-      return res.status(400).json({ success: false, message: 'Invalid plan' });
+    if (plan !== 'free') {
+      return res.status(403).json({ success: false, message: 'Paid plan upgrades require payment. Use /api/payment/create-order.' });
     }
     const User = require('./auth.model');
     await User.findByIdAndUpdate(req.user.id, {
-      plan,
-      planLimits: plan === 'free'
-        ? { dailyDMs: 1000, automations: 3 }
-        : plan === 'monthly'
-        ? { dailyDMs: 10000, automations: 100 }
-        : { dailyDMs: 50000, automations: 9999 },
+      plan: 'free',
+      planLimits: PLAN_LIMITS.free,
     });
-    res.json({ success: true, plan });
+    res.json({ success: true, plan: 'free' });
   } catch (err) {
     next(err);
   }

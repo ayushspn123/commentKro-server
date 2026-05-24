@@ -70,4 +70,36 @@ const getTopAutomations = async (userId, limit = 5) => {
     .lean();
 };
 
-module.exports = { getMessageStats, getDailyVolume, getTopAutomations };
+/**
+ * Get current usage vs plan limits for sidebar meters
+ */
+const getUsageStats = async (userId) => {
+  const User = require('../auth/auth.model');
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const [user, automationsCount, dmsThisMonth] = await Promise.all([
+    User.findById(userId),
+    Automation.countDocuments({ userId }),
+    Message.countDocuments({
+      userId: new mongoose.Types.ObjectId(userId),
+      direction: 'outbound',
+      type: 'dm',
+      status: { $in: ['sent', 'delivered', 'read'] },
+      createdAt: { $gte: startOfMonth },
+    }),
+  ]);
+
+  return {
+    dmsThisMonth,
+    automationsCount,
+    limits: {
+      dailyDMs: user?.planLimits?.dailyDMs ?? 1000,
+      automations: user?.planLimits?.automations ?? 3,
+    },
+    plan: user?.plan ?? 'free',
+  };
+};
+
+module.exports = { getMessageStats, getDailyVolume, getTopAutomations, getUsageStats };

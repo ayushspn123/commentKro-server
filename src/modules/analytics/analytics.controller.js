@@ -29,4 +29,13 @@ const getTopAutomations = async (req, res, next) => {
   }
 };
 
-module.exports = { getStats, getDailyVolume, getTopAutomations };
+const getUsage = async (req, res, next) => {
+  try {
+    const data = await analyticsService.getUsageStats(req.user.id);
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getStats, getDailyVolume, getTopAutomations, getUsage };

@@ -64,6 +64,8 @@ userSchema.methods.toSafeObject = function () {
   const obj = this.toObject();
   delete obj.passwordHash;
   delete obj.refreshToken;
+  delete obj.passwordResetToken;
+  delete obj.passwordResetExpires;
   return obj;
 };
 

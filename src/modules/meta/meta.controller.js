@@ -71,4 +71,34 @@ const getPosts = async (req, res, next) => {
   }
 };
 
-module.exports = { getPosts };
+/**
+ * DELETE /api/meta/disconnect
+ * Body: { pageId, platform }
+ * Removes the connected page from the user and deletes its token.
+ */
+const disconnectPage = async (req, res, next) => {
+  try {
+    const { pageId, platform } = req.body;
+    if (!pageId || !platform) {
+      return res.status(400).json({ success: false, message: 'pageId and platform are required' });
+    }
+
+    const User = require('../auth/auth.model');
+
+    // Remove token document
+    await Token.deleteOne({ userId: req.user.id, pageId, platform });
+
+    // Remove from connectedPages array
+    await User.findByIdAndUpdate(req.user.id, {
+      $pull: { connectedPages: { pageId, platform } },
+    });
+
+    logger.info(`Page disconnected: userId=${req.user.id} pageId=${pageId} platform=${platform}`);
+    res.json({ success: true, message: 'Account disconnected successfully' });
+  } catch (err) {
+    logger.error('disconnectPage error:', err.message);
+    next(err);
+  }
+};
+
+module.exports = { getPosts, disconnectPage };

@@ -27,6 +27,18 @@ const envSchema = z.object({
   META_OAUTH_REDIRECT_URI: z.string().default('http://localhost:5000/api/auth/meta/callback'),
   FRONTEND_URL: z.string().default('http://localhost:3000'),
 
+  // Email (Nodemailer)
+  SMTP_HOST: z.string().optional().default(''),
+  SMTP_PORT: z.string().optional().default('587'),
+  SMTP_SECURE: z.string().optional().default('false'),
+  SMTP_USER: z.string().optional().default(''),
+  SMTP_PASS: z.string().optional().default(''),
+  SMTP_FROM: z.string().optional().default(''),
+
+  // Razorpay
+  RAZORPAY_KEY_ID: z.string().optional().default(''),
+  RAZORPAY_KEY_SECRET: z.string().optional().default(''),
+
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'http', 'debug']).default('debug'),
 });
 
