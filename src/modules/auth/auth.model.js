@@ -42,6 +42,9 @@ const userSchema = new mongoose.Schema(
     connectedPages: [connectedPageSchema],
     isActive: { type: Boolean, default: true },
     lastLoginAt: { type: Date },
+    isEmailVerified: { type: Boolean, default: false },
+    emailVerificationToken: { type: String, select: false },
+    emailVerificationExpires: { type: Date, select: false },
     refreshToken: { type: String, select: false },
     passwordResetToken: { type: String, select: false },
     passwordResetExpires: { type: Date, select: false },
@@ -66,6 +69,8 @@ userSchema.methods.toSafeObject = function () {
   delete obj.refreshToken;
   delete obj.passwordResetToken;
   delete obj.passwordResetExpires;
+  delete obj.emailVerificationToken;
+  delete obj.emailVerificationExpires;
   return obj;
 };
 

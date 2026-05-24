@@ -6,6 +6,7 @@ const { encrypt } = require('../../utils/crypto');
 const Token = require('../token/token.model');
 const logger = require('../../utils/logger');
 const env = require('../../config/env');
+const { verificationTemplate, welcomeTemplate, passwordResetTemplate } = require('../../utils/emailTemplates');
 
 const META_GRAPH_BASE = `https://graph.facebook.com/${env.META_GRAPH_API_VERSION}`;
 
@@ -20,16 +21,43 @@ const signTokens = (userId) => {
   return { accessToken, refreshToken };
 };
 
+// ── Email verification helpers ────────────────────────────────────────
+const createVerificationToken = async (user) => {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+  user.emailVerificationToken = tokenHash;
+  user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+  await user.save({ validateBeforeSave: false });
+  return rawToken;
+};
+
 // ── Register ──────────────────────────────────────────────────────────
 const register = async ({ email, password, name }) => {
   const existing = await User.findOne({ email });
   if (existing) throw Object.assign(new Error('Email already in use'), { statusCode: 409 });
 
-  const user = await User.create({ email, name, passwordHash: password });
+  const user = await User.create({ email, name, passwordHash: password, isEmailVerified: false });
   const tokens = signTokens(user._id.toString());
-
   user.refreshToken = tokens.refreshToken;
-  await user.save();
+
+  const rawToken = await createVerificationToken(user);
+  const verifyLink = `${env.FRONTEND_URL}/verify-email?token=${rawToken}`;
+
+  const { sendEmail } = require('../../utils/email');
+
+  // Send verification email (non-blocking)
+  sendEmail({
+    to: email,
+    subject: 'Verify your Comment Kro email address',
+    html: verificationTemplate(email, verifyLink),
+  }).catch(err => logger.warn(`Verification email failed: ${err.message}`));
+
+  // Send welcome email (non-blocking)
+  sendEmail({
+    to: email,
+    subject: `Welcome to Comment Kro, ${name || 'there'}! 🎉`,
+    html: welcomeTemplate(name || 'there', `${env.FRONTEND_URL}/dashboard`),
+  }).catch(err => logger.warn(`Welcome email failed: ${err.message}`));
 
   return { user: user.toSafeObject(), ...tokens };
 };
@@ -96,20 +124,8 @@ const forgotPassword = async (email) => {
   const { sendEmail } = require('../../utils/email');
   await sendEmail({
     to: email,
-    subject: 'Reset your Comment Please password',
-    html: `
-      <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-        <h2 style="color:#dc2743;margin-bottom:8px">Reset your password</h2>
-        <p style="color:#555;margin-bottom:24px">Click the button below to reset your Comment Please password. This link expires in 1 hour.</p>
-        <a href="${resetLink}"
-          style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#f09433,#dc2743,#bc1888);color:white;border-radius:10px;text-decoration:none;font-weight:bold;font-size:15px">
-          Reset Password
-        </a>
-        <p style="color:#999;font-size:12px;margin-top:24px">If you didn't request this, you can safely ignore this email.</p>
-        <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
-        <p style="color:#ccc;font-size:11px">Comment Please · Instagram DM Automation</p>
-      </div>
-    `,
+    subject: 'Reset your Comment Kro password',
+    html: passwordResetTemplate(resetLink),
   }).catch(err => logger.warn(`Reset email failed: ${err.message}`));
 
   const devToken = env.NODE_ENV !== 'production' ? rawToken : undefined;
@@ -282,4 +298,42 @@ const handleMetaCallback = async (userId, code) => {
   return { connectedPages: [{ pageId: igUserId, pageName: profile.username, platform: 'instagram' }] };
 };
 
-module.exports = { register, login, refreshAccessToken, forgotPassword, resetPassword, handleMetaCallback };
+// ── Send / Resend Verification Email ─────────────────────────────────
+const sendVerification = async (email) => {
+  const user = await User.findOne({ email });
+  if (!user) return; // silent — prevent enumeration
+
+  if (user.isEmailVerified) return; // already verified, nothing to do
+
+  const rawToken = await createVerificationToken(user);
+  const verifyLink = `${env.FRONTEND_URL}/verify-email?token=${rawToken}`;
+  const { sendEmail } = require('../../utils/email');
+
+  await sendEmail({
+    to: email,
+    subject: 'Verify your Comment Kro email address',
+    html: verificationTemplate(email, verifyLink),
+  });
+};
+
+// ── Verify Email ──────────────────────────────────────────────────────
+const verifyEmail = async (rawToken) => {
+  const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+  const user = await User.findOne({
+    emailVerificationToken: tokenHash,
+    emailVerificationExpires: { $gt: Date.now() },
+  });
+
+  if (!user) throw Object.assign(new Error('Verification link is invalid or has expired.'), { statusCode: 400 });
+
+  user.isEmailVerified = true;
+  user.emailVerificationToken = undefined;
+  user.emailVerificationExpires = undefined;
+  await user.save({ validateBeforeSave: false });
+
+  logger.info(`Email verified for user ${user._id}`);
+  return { message: 'Email verified successfully.' };
+};
+
+module.exports = { register, login, refreshAccessToken, forgotPassword, resetPassword, handleMetaCallback, sendVerification, verifyEmail };

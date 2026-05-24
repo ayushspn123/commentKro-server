@@ -1,35 +1,19 @@
-const nodemailer = require('nodemailer');
-const env = require('../config/env');
+const { Resend } = require('resend');
 const logger = require('./logger');
 
-let transporter = null;
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM = 'Comment Kro <noreply@docorio.app>';
 
-const getTransporter = () => {
-  if (!env.SMTP_HOST) return null;
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: env.SMTP_HOST,
-      port: Number(env.SMTP_PORT),
-      secure: env.SMTP_SECURE === 'true',
-      auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
-    });
-  }
-  return transporter;
-};
-
-const sendEmail = async ({ to, subject, html }) => {
-  const t = getTransporter();
-  if (!t) {
-    logger.warn('SMTP not configured — skipping email send');
+const sendEmail = async ({ to, subject, html, replyTo }) => {
+  if (!process.env.RESEND_API_KEY) {
+    logger.warn('RESEND_API_KEY not configured — skipping email send');
     return;
   }
-  const info = await t.sendMail({
-    from: env.SMTP_FROM || `"Comment Please" <${env.SMTP_USER}>`,
-    to,
-    subject,
-    html,
-  });
-  logger.info(`Email sent to ${to}: ${info.messageId}`);
+  const payload = { from: FROM, to, subject, html };
+  if (replyTo) payload.reply_to = replyTo;
+  const { data, error } = await resend.emails.send(payload);
+  if (error) throw new Error(`Resend error: ${error.message}`);
+  logger.info(`Email sent to ${to}: ${data.id}`);
 };
 
 module.exports = { sendEmail };

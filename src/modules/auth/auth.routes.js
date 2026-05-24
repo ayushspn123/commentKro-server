@@ -41,6 +41,8 @@ router.post('/refresh', controller.refreshToken);
 router.post('/logout', controller.logout);
 router.post('/forgot-password', validate(forgotSchema), controller.forgotPassword);
 router.post('/reset-password', validate(resetSchema), controller.resetPassword);
+router.post('/send-verification', validate(z.object({ body: z.object({ email: z.string().email() }) })), controller.sendVerification);
+router.post('/verify-email', validate(z.object({ body: z.object({ token: z.string().min(1) }) })), controller.verifyEmail);
 
 // ── Protected routes ──────────────────────────────────────────────────
 // Session check — used by frontend on every page load

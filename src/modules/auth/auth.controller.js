@@ -74,6 +74,28 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
+// ─── Send / Resend Verification Email ────────────────────────────────
+const sendVerification = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    await authService.sendVerification(email);
+    res.json({ success: true, message: 'If this account exists and is unverified, a new link has been sent.' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Verify Email ─────────────────────────────────────────────────────
+const verifyEmail = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    const result = await authService.verifyEmail(token);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ─── Meta OAuth ───────────────────────────────────────────────────────
 const metaOAuthRedirect = (req, res) => {
   // Encode userId + optional returnTo in state (Meta redirect won't carry session cookie)
@@ -206,4 +228,4 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, me, refreshToken, logout, forgotPassword, resetPassword, metaOAuthRedirect, metaOAuthCallback, selectPlan, updateProfile };
+module.exports = { register, login, me, refreshToken, logout, forgotPassword, resetPassword, sendVerification, verifyEmail, metaOAuthRedirect, metaOAuthCallback, selectPlan, updateProfile };
