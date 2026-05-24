@@ -41,14 +41,23 @@ const createLimiter = (options) => {
 
 // ── Limiters ──────────────────────────────────────────────────────────
 
-// General API rate limiter — 100 req / 15 min
+// Dashboard read limiter — GET requests for stats/usage/me/automations
+// Higher limit because the dashboard fires several reads on every page load
+const dashboardReadLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  keyGenerator: (req) => req.user?.id || req.ip,
+  skip: (req) => req.method !== 'GET',
+});
+
+// General API limiter — all other authenticated routes (writes, etc.)
 const apiLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 300,
   keyGenerator: (req) => req.user?.id || req.ip,
 });
 
-// Strict limiter for auth routes — 20 req / 15 min
+// Strict limiter for auth routes — 20 req / 15 min per IP
 const authLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   max: 20,
@@ -62,4 +71,4 @@ const webhookLimiter = createLimiter({
   keyGenerator: (req) => req.ip,
 });
 
-module.exports = { apiLimiter, authLimiter, webhookLimiter };
+module.exports = { apiLimiter, authLimiter, webhookLimiter, dashboardReadLimiter };

@@ -10,7 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const env = require('./config/env');
 const logger = require('./utils/logger');
 const errorMiddleware = require('./middleware/error.middleware');
-const { apiLimiter } = require('./middleware/rateLimit.middleware');
+const { apiLimiter, dashboardReadLimiter } = require('./middleware/rateLimit.middleware');
 
 // Route modules
 const authRoutes = require('./modules/auth/auth.routes');
@@ -66,7 +66,11 @@ app.use(compression());
 app.use(cookieParser());
 
 // ── Rate limiting ─────────────────────────────────────────────────────
-app.use('/api', apiLimiter);
+// DISABLED: uncomment to re-enable
+// app.use('/api/analytics', dashboardReadLimiter);
+// app.use('/api/automations', dashboardReadLimiter);
+// app.use('/api/auth/me', dashboardReadLimiter);
+// app.use('/api', apiLimiter);
 
 // ── Routes ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);

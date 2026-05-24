@@ -4,14 +4,14 @@ const User = require('../auth/auth.model');
 const logger = require('../../utils/logger');
 
 const PLAN_CONFIG = {
-  monthly: { amount: 79900, currency: 'INR' },   // ₹799
-  annual:  { amount: 599900, currency: 'INR' },  // ₹5,999/year (₹499/mo)
+  monthly: { amount: 19900, currency: 'INR' },   // ₹199/mo
+  annual:  { amount: 178800, currency: 'INR' },  // ₹1,788/year (₹149/mo)
 };
 
 const PLAN_LIMITS = {
-  monthly: { dailyDMs: 10000, automations: 100 },
-  annual:  { dailyDMs: 50000, automations: 9999 },
-  free:    { dailyDMs: 1000,  automations: 3 },
+  monthly: { dailyDMs: -1,   automations: -1 },  // -1 = unlimited
+  annual:  { dailyDMs: -1,   automations: -1 },  // -1 = unlimited
+  free:    { dailyDMs: 1000, automations: -1 },  // unlimited automations, 1k DMs
 };
 
 // Create Razorpay order (or upgrade directly in dev mode when no keys set)
