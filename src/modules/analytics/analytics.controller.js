@@ -38,4 +38,15 @@ const getUsage = async (req, res, next) => {
   }
 };
 
-module.exports = { getStats, getDailyVolume, getTopAutomations, getUsage };
+const getAutomationStats = async (req, res, next) => {
+  try {
+    const days = parseInt(req.query.days, 10) || 30;
+    const data = await analyticsService.getAutomationStats(req.user.id, req.params.id, days);
+    if (!data) return res.status(404).json({ success: false, message: 'Automation not found' });
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
+
+module.exports = { getStats, getDailyVolume, getTopAutomations, getUsage, getAutomationStats };

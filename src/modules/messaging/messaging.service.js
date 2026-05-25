@@ -2,6 +2,7 @@ const axios = require('axios');
 const { decrypt } = require('../../utils/crypto');
 const Token = require('../token/token.model');
 const Message = require('../messaging/message.model');
+const Lead = require('../leads/lead.model');
 const logger = require('../../utils/logger');
 const env = require('../../config/env');
 
@@ -104,6 +105,17 @@ const sendDM = async ({ userId, pageId, platform, recipientId, message, automati
     });
 
     logger.info('DM sent successfully', { traceId, metaMessageId, platform, recipientId });
+
+    // Upsert lead record — fire-and-forget, never block the DM response
+    Lead.findOneAndUpdate(
+      { userId, recipientId },
+      {
+        $setOnInsert: { userId, recipientId, platform, automationId: automationId || null, status: 'new' },
+        $set: { lastContactedAt: new Date() },
+      },
+      { upsert: true, new: true }
+    ).catch(e => logger.warn('Lead upsert failed', { recipientId, err: e.message }));
+
     return { success: true, metaMessageId };
   } catch (err) {
     const errorCode = err.response?.data?.error?.code;

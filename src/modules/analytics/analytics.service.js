@@ -102,4 +102,59 @@ const getUsageStats = async (userId) => {
   };
 };
 
-module.exports = { getMessageStats, getDailyVolume, getTopAutomations, getUsageStats };
+/**
+ * Get stats + daily volume for a single automation
+ */
+const getAutomationStats = async (userId, automationId, days = 30) => {
+  const uid = new mongoose.Types.ObjectId(userId);
+  const aid = new mongoose.Types.ObjectId(automationId);
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+  const automation = await Automation.findOne({ _id: aid, userId: uid })
+    .select('name stats platform trigger isActive createdAt')
+    .lean();
+  if (!automation) return null;
+
+  const [msgStats] = await Message.aggregate([
+    { $match: { userId: uid, automationId: aid } },
+    {
+      $group: {
+        _id: null,
+        sent: { $sum: { $cond: [{ $in: ['$status', ['sent', 'delivered', 'read']] }, 1, 0] } },
+        delivered: { $sum: { $cond: [{ $eq: ['$status', 'delivered'] }, 1, 0] } },
+        failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+      },
+    },
+  ]);
+
+  const volume = await Message.aggregate([
+    { $match: { userId: uid, automationId: aid, createdAt: { $gte: since } } },
+    {
+      $group: {
+        _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ]);
+
+  return {
+    automation: {
+      _id: automation._id,
+      name: automation.name,
+      platform: automation.platform,
+      isActive: automation.isActive,
+      triggerType: automation.trigger?.type,
+      createdAt: automation.createdAt,
+    },
+    stats: {
+      triggered: automation.stats?.triggered ?? 0,
+      sent: msgStats?.sent ?? 0,
+      delivered: msgStats?.delivered ?? 0,
+      failed: msgStats?.failed ?? 0,
+    },
+    volume,
+  };
+};
+
+module.exports = { getMessageStats, getDailyVolume, getTopAutomations, getUsageStats, getAutomationStats };
