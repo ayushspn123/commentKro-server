@@ -55,6 +55,7 @@ const getMessages = async (req, res, next) => {
     const filter = { userId };
     if (req.query.platform) filter.platform = req.query.platform;
     if (req.query.status) filter.status = req.query.status;
+    if (req.query.recipientId) filter.recipientId = req.query.recipientId;
 
     const [messages, total] = await Promise.all([
       Message.find(filter)
