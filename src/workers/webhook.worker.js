@@ -11,7 +11,7 @@
 const { Worker } = require('bullmq');
 const { redisConfig } = require('../config/redis');
 const { safeAdd } = require('../config/queues');
-const { processCommentEvent, processMessageEvent } = require('../modules/automation/automation.service');
+const { processCommentEvent, processMessageEvent, processStoryMentionEvent } = require('../modules/automation/automation.service');
 const logger = require('../utils/logger');
 
 const webhookWorker = new Worker(
@@ -52,8 +52,23 @@ const processInstagramEntry = async (entry, traceId) => {
     return;
   }
 
+  if (entry.field === 'mentions' && entry.value) {
+    const { media_id: mediaId, comment_id: mentionId } = entry.value;
+    if (mediaId || mentionId) {
+      await processStoryMentionEvent({ pageId, mediaId, mentionId, traceId });
+    }
+    return;
+  }
+
   // Facebook Login format: entry.changes array (fallback)
   for (const change of entry.changes || []) {
+    if (change.field === 'mentions') {
+      const { media_id: mediaId, comment_id: mentionId } = change.value || {};
+      if (mediaId || mentionId) {
+        await processStoryMentionEvent({ pageId, mediaId, mentionId, traceId });
+      }
+      continue;
+    }
     if (change.field !== 'comments') continue;
 
     const { id: commentId, text: commentText, from, media } = change.value || {};

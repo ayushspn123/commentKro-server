@@ -69,11 +69,10 @@ app.use(compression());
 app.use(cookieParser());
 
 // ── Rate limiting ─────────────────────────────────────────────────────
-// DISABLED: uncomment to re-enable
-// app.use('/api/analytics', dashboardReadLimiter);
-// app.use('/api/automations', dashboardReadLimiter);
-// app.use('/api/auth/me', dashboardReadLimiter);
-// app.use('/api', apiLimiter);
+app.use('/api/analytics', dashboardReadLimiter);
+app.use('/api/automations', dashboardReadLimiter);
+app.use('/api/auth/me', dashboardReadLimiter);
+app.use('/api', apiLimiter);
 
 // ── Routes ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);

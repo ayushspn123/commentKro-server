@@ -269,6 +269,151 @@ const processMessageEvent = async ({ pageId, senderId, messageText, platform = '
   return { triggered };
 };
 
+/**
+ * Process an Instagram story mention event.
+ * Fetches the mentioner's IGSID via Graph API, then fires story_mention automations.
+ *
+ * @param {object} event
+ * @param {string} event.pageId     - IG Business Account ID that was mentioned
+ * @param {string} event.mediaId    - Story media ID from webhook value.media_id
+ * @param {string} event.mentionId  - Mention comment ID from webhook value.comment_id
+ * @param {string} event.traceId
+ */
+const processStoryMentionEvent = async ({ pageId, mediaId, mentionId, traceId }) => {
+  const platform = 'instagram';
+
+  // ── Token lookup (same strategy as processCommentEvent) ──────────────
+  let matchingToken = await Token.findOne({
+    platform,
+    $or: [{ pageId }, { webhookPageId: pageId }],
+  }).select('pageId userId accessToken');
+
+  if (!matchingToken) {
+    const candidates = await Token.find({
+      platform,
+      webhookPageId: { $exists: false },
+      pageId: { $not: /^demo/ },
+    }).select('pageId userId accessToken');
+
+    for (const candidate of candidates) {
+      const hasAutomations = await Automation.exists({
+        userId: candidate.userId,
+        platform,
+        isActive: true,
+        'trigger.type': 'story_mention',
+      });
+      if (hasAutomations) {
+        matchingToken = await Token.findOneAndUpdate(
+          { _id: candidate._id },
+          { $set: { webhookPageId: pageId } },
+          { new: true }
+        ).select('pageId userId accessToken');
+        break;
+      }
+    }
+  }
+
+  if (!matchingToken) {
+    logger.warn(`[${traceId}] Story mention — no token found for pageId ${pageId}`);
+    return { triggered: 0 };
+  }
+
+  // ── Resolve the mentioner's IGSID via Graph API ───────────────────────
+  // Meta sends value.comment_id for mentions — we fetch its `from` field
+  let mentionerIgsid = null;
+  try {
+    const { decrypt: dec } = require('../../utils/crypto');
+    const rawToken = await Token.findById(matchingToken._id).select('+accessToken');
+    const accessToken = dec(rawToken.accessToken);
+
+    if (mentionId) {
+      const res = await axios.get(
+        `https://graph.instagram.com/${env.META_GRAPH_API_VERSION}/${mentionId}`,
+        { params: { fields: 'from', access_token: accessToken }, timeout: 8000 }
+      );
+      mentionerIgsid = res.data?.from?.id ?? null;
+    }
+
+    // Fallback: get from media if mention lookup failed
+    if (!mentionerIgsid && mediaId) {
+      const mediaRes = await axios.get(
+        `https://graph.instagram.com/${env.META_GRAPH_API_VERSION}/${mediaId}`,
+        { params: { fields: 'owner', access_token: accessToken }, timeout: 8000 }
+      );
+      mentionerIgsid = mediaRes.data?.owner?.id ?? null;
+    }
+  } catch (err) {
+    logger.warn(`[${traceId}] Story mention — failed to resolve mentioner IGSID: ${err.message}`);
+  }
+
+  if (!mentionerIgsid) {
+    logger.warn(`[${traceId}] Story mention — could not determine mentioner IGSID, skipping`);
+    return { triggered: 0 };
+  }
+
+  // ── Find story_mention automations ────────────────────────────────────
+  const automations = await Automation.find({
+    userId: matchingToken.userId,
+    isActive: true,
+    'trigger.type': 'story_mention',
+    platform,
+  });
+
+  logger.info(`[${traceId}] Story mention from ${mentionerIgsid} on page ${pageId} — ${automations.length} automation(s)`);
+
+  let triggered = 0;
+
+  for (const automation of automations) {
+    // ── Rate limit ────────────────────────────────────────────────────
+    const rlKey = `rl:auto:${automation._id}:${new Date().getUTCHours()}`;
+    const allowed = await checkRateLimit(rlKey, automation.rateLimit?.maxPerHour ?? 100);
+    if (!allowed) {
+      logger.warn(`[${traceId}] Automation ${automation._id} rate limit hit`);
+      continue;
+    }
+
+    // ── Enqueue send_dm actions only (can't reply to a story mention) ─
+    for (const action of automation.actions) {
+      if (action.type !== 'send_dm') continue;
+
+      const message = interpolateTemplate(action.template, {
+        sender_name: mentionerIgsid,
+        media_id:    mediaId ?? '',
+      });
+
+      await safeAdd(
+        'message',
+        'send_dm',
+        {
+          userId:       automation.userId.toString(),
+          pageId,
+          platform,
+          recipientId:  mentionerIgsid,
+          automationId: automation._id.toString(),
+          message,
+          traceId,
+          replyOnDmSent: false,
+        },
+        { delay: action.delay || 0 }
+      );
+    }
+
+    await Automation.findByIdAndUpdate(automation._id, { $inc: { 'stats.triggered': 1 } });
+    await safeAdd('analytics', 'automation-triggered', {
+      userId:       automation.userId.toString(),
+      automationId: automation._id.toString(),
+      platform,
+      traceId,
+    });
+
+    triggered++;
+    logger.info(`[${traceId}] Story mention automation "${automation.name}" triggered → DM queued for ${mentionerIgsid}`);
+  }
+
+  logger.info(`[${traceId}] Story mention done — ${triggered}/${automations.length} automation(s) triggered`);
+  return { triggered };
+};
+
 // ── CRUD helpers ──────────────────────────────────────────────────────
 const createAutomation = async (userId, data) => {
   const User = require('../auth/auth.model');
@@ -359,6 +504,7 @@ const updateAutomation = async (userId, automationId, data) => {
 module.exports = {
   processCommentEvent,
   processMessageEvent,
+  processStoryMentionEvent,
   createAutomation,
   listAutomations,
   updateAutomation,
