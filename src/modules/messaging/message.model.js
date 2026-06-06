@@ -24,7 +24,7 @@ const messageSchema = new mongoose.Schema(
     recipientId: { type: String, required: true },
     senderId: { type: String },
     content: { type: String, required: true, maxlength: 2000 },
-    metaMessageId: { type: String, sparse: true },
+    metaMessageId: { type: String },
     status: {
       type: String,
       enum: ['queued', 'sent', 'delivered', 'read', 'failed'],

@@ -1,5 +1,10 @@
 const { z } = require('zod');
 
+// Accept either MONGO_URI or MONGODB_URI (common naming variant)
+if (!process.env.MONGO_URI && process.env.MONGODB_URI) {
+  process.env.MONGO_URI = process.env.MONGODB_URI;
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'staging', 'production']).default('development'),
   PORT: z.string().default('5000'),
