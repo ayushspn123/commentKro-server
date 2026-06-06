@@ -1,35 +1,28 @@
 /**
  * ─────────────────────────────────────────────────────────────────────
- * Comment Please — Webhook Worker
- * Run: node src/workers/webhook.worker.js
+ * Comment Please — Webhook Handler (in-process, Redis-free)
  *
  * Flow:
- *  webhook-events queue → parse Meta payload → run keyword matching
- *  → enqueue DM jobs on outbound-messages queue → Meta Graph API → DM sent
+ *  webhook controller → safeAdd('webhook') → this handler → keyword
+ *  matching → safeAdd('message') → Meta Graph API → DM sent
  * ─────────────────────────────────────────────────────────────────────
  */
-const { Worker } = require('bullmq');
-const { redisConfig } = require('../config/redis');
-const { safeAdd } = require('../config/queues');
+const { registerHandler } = require('../config/queues');
 const { processCommentEvent, processMessageEvent, processStoryMentionEvent } = require('../modules/automation/automation.service');
 const logger = require('../utils/logger');
 
-const webhookWorker = new Worker(
-  'webhook-events',
-  async (job) => {
-    const { platform, entry, traceId } = job.data;
-    logger.info(`[WebhookWorker] Job ${job.id} — platform: ${platform}`, { traceId });
+registerHandler('webhook', async (jobName, data) => {
+  const { platform, entry, traceId } = data;
+  logger.info(`[WebhookHandler] ${jobName} — platform: ${platform}`, { traceId });
 
-    if (platform === 'instagram') {
-      await processInstagramEntry(entry, traceId);
-    } else if (platform === 'facebook') {
-      await processFacebookEntry(entry, traceId);
-    } else {
-      logger.warn(`[WebhookWorker] Unknown platform: ${platform}`);
-    }
-  },
-  { connection: redisConfig, concurrency: 20 }
-);
+  if (platform === 'instagram') {
+    await processInstagramEntry(entry, traceId);
+  } else if (platform === 'facebook') {
+    await processFacebookEntry(entry, traceId);
+  } else {
+    logger.warn(`[WebhookHandler] Unknown platform: ${platform}`);
+  }
+});
 
 // ── Instagram comment parser ────────────────────────────────────────
 const processInstagramEntry = async (entry, traceId) => {
@@ -105,28 +98,4 @@ const processFacebookEntry = async (entry, traceId) => {
   }
 };
 
-// ── Worker events ──────────────────────────────────────────────────
-webhookWorker.on('completed', (job) => {
-  logger.info(`[WebhookWorker] Job ${job.id} completed`);
-});
-
-webhookWorker.on('failed', async (job, err) => {
-  logger.error(`[WebhookWorker] Job ${job?.id} failed: ${err.message}`);
-
-  // After max retries — move to dead-letter queue
-  if (job && job.attemptsMade >= (job.opts?.attempts ?? 5)) {
-    await safeAdd('deadLetter', 'webhook-failed', {
-      originalJob: job.name,
-      data: job.data,
-      error: err.message,
-      failedAt: new Date().toISOString(),
-    });
-    logger.warn(`[WebhookWorker] Job ${job.id} moved to DLQ after ${job.attemptsMade} attempts`);
-  }
-});
-
-webhookWorker.on('error', (err) => {
-  logger.error(`[WebhookWorker] Error: ${err.message}`);
-});
-
-logger.info('🔄 Webhook worker started (concurrency: 20) — listening on "webhook-events"');
+logger.info('🔄 Webhook handler registered (in-process) — handles "webhook" jobs');

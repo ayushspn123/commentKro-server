@@ -7,29 +7,20 @@ const { decrypt } = require('../../utils/crypto');
 const logger = require('../../utils/logger');
 const env = require('../../config/env');
 
-// ── Rate limit store (in-memory when Redis is unavailable) ────────────
+// ── In-memory hourly rate-limit store (Redis-free) ────────────────────
 const inMemoryRL = new Map(); // key → { count, resetAt }
 
 const checkRateLimit = async (key, maxPerHour) => {
   const now = Date.now();
   const windowMs = 3600 * 1000;
 
-  // Try Redis first
-  try {
-    const { redisClient } = require('../../config/redis');
-    const count = await redisClient.incr(key);
-    if (count === 1) await redisClient.expire(key, 3600);
-    return count <= maxPerHour;
-  } catch {
-    // Fallback to in-memory
-    const entry = inMemoryRL.get(key);
-    if (!entry || entry.resetAt < now) {
-      inMemoryRL.set(key, { count: 1, resetAt: now + windowMs });
-      return true;
-    }
-    entry.count += 1;
-    return entry.count <= maxPerHour;
+  const entry = inMemoryRL.get(key);
+  if (!entry || entry.resetAt < now) {
+    inMemoryRL.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
   }
+  entry.count += 1;
+  return entry.count <= maxPerHour;
 };
 
 /**

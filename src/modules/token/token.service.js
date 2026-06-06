@@ -1,15 +1,13 @@
 const axios = require('axios');
 const Token = require('./token.model');
 const { encrypt, decrypt } = require('../../utils/crypto');
-const { redisClient } = require('../../config/redis');
 const logger = require('../../utils/logger');
 const env = require('../../config/env');
 
 const META_GRAPH_BASE = `https://graph.facebook.com/${env.META_GRAPH_API_VERSION}`;
-const TOKEN_CACHE_TTL = 1800; // 30 min
 
 /**
- * Store or update a page access token (encrypted) in DB + Redis cache
+ * Store or update a page access token (encrypted) in DB
  */
 const upsertToken = async ({ userId, pageId, platform, rawToken, expiresIn, scopes = [] }) => {
   const encryptedToken = encrypt(rawToken);
@@ -29,35 +27,19 @@ const upsertToken = async ({ userId, pageId, platform, rawToken, expiresIn, scop
     { upsert: true, new: true }
   );
 
-  // Warm the cache
-  const cacheKey = `token:${userId}:${pageId}:${platform}`;
-  await redisClient.set(cacheKey, rawToken, 'EX', TOKEN_CACHE_TTL);
-
   logger.info(`Token stored for page ${pageId} [${platform}]`);
   return token;
 };
 
 /**
- * Get decrypted access token — checks Redis cache first, then DB
+ * Get decrypted access token from DB
  */
 const getDecryptedToken = async (userId, pageId, platform) => {
-  const cacheKey = `token:${userId}:${pageId}:${platform}`;
-
-  // Cache hit
-  const cached = await redisClient.get(cacheKey);
-  if (cached) return cached;
-
-  // DB lookup
   const token = await Token.findOne({ userId, pageId, platform }).select('+accessToken');
   if (!token) throw Object.assign(new Error(`No token for page ${pageId}`), { statusCode: 404 });
   if (token.expiresAt < new Date()) throw Object.assign(new Error('Token expired'), { statusCode: 401 });
 
-  const decrypted = decrypt(token.accessToken);
-
-  // Re-warm cache
-  await redisClient.set(cacheKey, decrypted, 'EX', TOKEN_CACHE_TTL);
-
-  return decrypted;
+  return decrypt(token.accessToken);
 };
 
 /**
@@ -116,14 +98,10 @@ const refreshExpiringTokens = async () => {
 };
 
 /**
- * Revoke a token and remove from DB + cache
+ * Revoke a token and remove from DB
  */
 const revokeToken = async (userId, pageId, platform) => {
   await Token.findOneAndDelete({ userId, pageId, platform });
-
-  const cacheKey = `token:${userId}:${pageId}:${platform}`;
-  await redisClient.del(cacheKey);
-
   logger.info(`Token revoked for page ${pageId} [${platform}]`);
 };
 

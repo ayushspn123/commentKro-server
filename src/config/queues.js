@@ -1,70 +1,52 @@
 const logger = require('../utils/logger');
 
 /**
- * BullMQ queues — only initialized when Redis is available.
- * If Redis is unavailable, all add() calls become no-ops so the
- * API server can still handle auth and management routes.
+ * In-process job dispatcher (Redis-free).
+ *
+ * Replaces the former BullMQ/Redis queues. Workers register a handler per
+ * logical queue via registerHandler(); safeAdd() invokes that handler
+ * directly in-process. `opts.delay` is honoured with setTimeout.
+ *
+ * Trade-offs vs Redis/BullMQ: no cross-process distribution, no retries,
+ * and in-flight jobs are lost on restart. Fine for a single-instance
+ * deployment; revisit if you scale horizontally.
  */
 
-let queues = {};
-let redisAvailable = false;
+const handlers = new Map(); // queueName -> async (jobName, data) => {}
 
-// Lazy-initialise: the webhook controller calls getQueue() at request time,
-// so the import itself never crashes the process.
-const getQueues = () => {
-  if (redisAvailable) return queues;
-
-  try {
-    const { Queue } = require('bullmq');
-    const { redisConfig } = require('./redis');
-
-    const defaultJobOptions = {
-      removeOnComplete: { count: 1000 },
-      removeOnFail:     { count: 5000 },
-    };
-
-    const webhookQueue = new Queue('webhook-events', {
-      connection: redisConfig,
-      defaultJobOptions: { ...defaultJobOptions, attempts: 5, backoff: { type: 'exponential', delay: 1000 } },
-    });
-
-    const messageQueue = new Queue('outbound-messages', {
-      connection: redisConfig,
-      defaultJobOptions: { ...defaultJobOptions, attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
-    });
-
-    const analyticsQueue = new Queue('analytics-events', {
-      connection: redisConfig,
-      defaultJobOptions: { ...defaultJobOptions, attempts: 2, backoff: { type: 'fixed', delay: 5000 } },
-    });
-
-    const deadLetterQueue = new Queue('dead-letter-queue', {
-      connection: redisConfig,
-      defaultJobOptions: { removeOnComplete: false, removeOnFail: false },
-    });
-
-    queues = { webhookQueue, messageQueue, analyticsQueue, deadLetterQueue };
-    redisAvailable = true;
-
-    Object.values(queues).forEach((q) => logger.info(`📦 Queue ready: ${q.name}`));
-  } catch (err) {
-    logger.warn(`⚠️  Queues unavailable (Redis not running): ${err.message}`);
-  }
-
-  return queues;
+const registerHandler = (queueName, handler) => {
+  handlers.set(queueName, handler);
+  logger.info(`📦 In-process handler registered: '${queueName}'`);
 };
 
 /**
- * Safe add — adds a job if Redis is available, silently skips otherwise.
+ * Run a job inline through its registered handler. Errors are caught and
+ * logged so a failed job never crashes the request that scheduled it.
  */
 const safeAdd = async (queueName, jobName, data, opts = {}) => {
-  const q = getQueues();
-  const queue = q[`${queueName}Queue`] || q[queueName];
-  if (!queue) {
-    logger.debug(`Queue '${queueName}' unavailable — skipping job '${jobName}'`);
+  const handler = handlers.get(queueName);
+  if (!handler) {
+    logger.debug(`No handler for queue '${queueName}' — skipping job '${jobName}'`);
     return null;
   }
-  return queue.add(jobName, data, opts);
+
+  const run = async () => {
+    try {
+      await handler(jobName, data);
+    } catch (err) {
+      logger.error(`[inline:${queueName}] job '${jobName}' failed: ${err.message}`);
+    }
+  };
+
+  if (opts.delay && opts.delay > 0) {
+    setTimeout(run, opts.delay);
+    return null;
+  }
+
+  return run();
 };
 
-module.exports = { getQueues, safeAdd };
+// Back-compat no-op for callers that still import getQueues()
+const getQueues = () => ({});
+
+module.exports = { safeAdd, registerHandler, getQueues };

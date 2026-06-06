@@ -1,10 +1,8 @@
 const rateLimit = require('express-rate-limit');
-const logger = require('../utils/logger');
 
 /**
- * Creates a rate limiter.
- * In production, use Redis store (rate-limit-redis).
- * In development without Redis, falls back to in-memory store automatically.
+ * Creates a rate limiter using express-rate-limit's built-in in-memory store
+ * (Redis-free). State is per-instance — fine for a single-instance deployment.
  */
 const createLimiter = (options) => {
   const limiterOptions = {
@@ -20,21 +18,6 @@ const createLimiter = (options) => {
     skip: (req) => req.method === 'OPTIONS',
     ...options,
   };
-
-  // Try to use Redis store in production
-  if (process.env.NODE_ENV === 'production') {
-    try {
-      const { RedisStore } = require('rate-limit-redis');
-      const { redisClient } = require('../config/redis');
-      limiterOptions.store = new RedisStore({
-        sendCommand: (...args) => redisClient.call(...args),
-      });
-      logger.debug('Rate limiter using Redis store');
-    } catch {
-      logger.warn('Redis store unavailable — using in-memory rate limiting');
-    }
-  }
-  // In dev: no store set = express-rate-limit uses built-in MemoryStore (no Redis needed)
 
   return rateLimit(limiterOptions);
 };

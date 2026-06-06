@@ -10,12 +10,12 @@ const startServer = async () => {
   // ── MongoDB (required) ─────────────────────────────────────────────
   await connectDB();
 
-  // ── Workers (BullMQ manages its own Redis connection) ─────────────
-  logger.info('Starting workers...');
+  // ── In-process job handlers (Redis-free) ──────────────────────────
+  logger.info('Registering in-process job handlers...');
   require('./workers/webhook.worker');
   require('./workers/message.worker');
   require('./workers/analytics.worker');
-  logger.info('✅ All workers started in-process');
+  logger.info('✅ All job handlers registered in-process');
 
   // ── HTTP Server ────────────────────────────────────────────────────
   const server = app.listen(PORT, () => {
