@@ -27,6 +27,11 @@ const envSchema = z.object({
   META_OAUTH_REDIRECT_URI: z.string().default('http://localhost:5000/api/auth/meta/callback'),
   FRONTEND_URL: z.string().default('http://localhost:3000'),
 
+  // Google OAuth (Sign in with Google) — optional in dev (feature disabled if unset)
+  GOOGLE_CLIENT_ID: z.string().optional().default(''),
+  GOOGLE_CLIENT_SECRET: z.string().optional().default(''),
+  GOOGLE_OAUTH_REDIRECT_URI: z.string().default('http://localhost:5000/api/auth/google/callback'),
+
   // Email (Resend)
   RESEND_API_KEY: z.string().optional().default(''),
   CONTACT_EMAIL: z.string().email().optional().default('admin@commentkro.com'),

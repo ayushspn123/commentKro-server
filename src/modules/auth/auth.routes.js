@@ -44,6 +44,12 @@ router.post('/reset-password', validate(resetSchema), controller.resetPassword);
 router.post('/send-verification', validate(z.object({ body: z.object({ email: z.string().email() }) })), controller.sendVerification);
 router.post('/verify-email', validate(z.object({ body: z.object({ token: z.string().min(1) }) })), controller.verifyEmail);
 
+// Google OAuth (login + signup share one flow)
+// /google          — redirect browser to Google consent screen
+// /google/callback — Google redirects back; sets session cookies, no auth needed
+router.get('/google', controller.googleOAuthRedirect);
+router.get('/google/callback', controller.googleOAuthCallback);
+
 // ── Protected routes ──────────────────────────────────────────────────
 // Session check — used by frontend on every page load
 router.get('/me', authenticate, controller.me);

@@ -298,6 +298,116 @@ const handleMetaCallback = async (userId, code) => {
   return { connectedPages: [{ pageId: igUserId, pageName: profile.username, platform: 'instagram' }] };
 };
 
+// ── Google OAuth (Sign in / Sign up with Google) ─────────────────────
+const GOOGLE_AUTH_BASE = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
+
+/**
+ * Builds the Google consent-screen URL the browser is redirected to.
+ * `state` carries our anti-CSRF nonce + post-login returnTo path (base64url).
+ */
+const buildGoogleAuthUrl = (state) => {
+  if (!env.GOOGLE_CLIENT_ID) {
+    throw Object.assign(new Error('Google login is not configured'), { statusCode: 503 });
+  }
+  const params = new URLSearchParams({
+    client_id: env.GOOGLE_CLIENT_ID,
+    redirect_uri: env.GOOGLE_OAUTH_REDIRECT_URI,
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'offline',
+    include_granted_scopes: 'true',
+    prompt: 'select_account',
+    state,
+  });
+  return `${GOOGLE_AUTH_BASE}?${params}`;
+};
+
+/**
+ * Handles the Google OAuth callback: exchanges the auth code for tokens,
+ * fetches the user's profile, then finds-or-creates a local user account.
+ * Works for both login and signup (Google has no separate flows).
+ */
+const handleGoogleCallback = async (code) => {
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
+    throw Object.assign(new Error('Google login is not configured'), { statusCode: 503 });
+  }
+
+  // ── Step 1: Exchange authorization code for an access token ─────────
+  const tokenRes = await axios.post(
+    GOOGLE_TOKEN_URL,
+    new URLSearchParams({
+      code,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: env.GOOGLE_OAUTH_REDIRECT_URI,
+      grant_type: 'authorization_code',
+    }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
+
+  const googleAccessToken = tokenRes.data.access_token;
+
+  // ── Step 2: Fetch the verified Google profile ──────────────────────
+  const profileRes = await axios.get(GOOGLE_USERINFO_URL, {
+    headers: { Authorization: `Bearer ${googleAccessToken}` },
+  });
+
+  const { id: googleId, email, verified_email: verifiedEmail, name, picture } = profileRes.data;
+
+  if (!email) {
+    throw Object.assign(new Error('Google account has no email'), { statusCode: 400 });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // ── Step 3: Find existing user (by googleId, then by email) or create ─
+  let user = await User.findOne({ googleId }).select('+refreshToken');
+  let isNewUser = false;
+
+  if (!user) {
+    user = await User.findOne({ email: normalizedEmail }).select('+refreshToken');
+  }
+
+  if (user) {
+    // Link Google to an existing (e.g. email-registered) account
+    if (!user.googleId) user.googleId = googleId;
+    if (!user.avatar && picture) user.avatar = picture;
+    if (!user.name && name) user.name = name;
+    // Google has verified the email — trust it
+    if (verifiedEmail) user.isEmailVerified = true;
+  } else {
+    isNewUser = true;
+    user = new User({
+      email: normalizedEmail,
+      name: name || normalizedEmail.split('@')[0],
+      avatar: picture || undefined,
+      googleId,
+      authProvider: 'google',
+      isEmailVerified: verifiedEmail !== false, // Google emails are verified
+    });
+  }
+
+  const tokens = signTokens(user._id.toString());
+  user.refreshToken = tokens.refreshToken;
+  user.lastLoginAt = new Date();
+  await user.save({ validateBeforeSave: false });
+
+  // Welcome email for brand-new accounts (non-blocking)
+  if (isNewUser) {
+    const { sendEmail } = require('../../utils/email');
+    sendEmail({
+      to: normalizedEmail,
+      subject: `Welcome to Comment Kro, ${user.name || 'there'}! 🎉`,
+      html: welcomeTemplate(user.name || 'there', `${env.FRONTEND_URL}/dashboard`),
+    }).catch(err => logger.warn(`Welcome email failed: ${err.message}`));
+  }
+
+  logger.info(`Google ${isNewUser ? 'signup' : 'login'} for ${normalizedEmail} (googleId:${googleId})`);
+  return { user: user.toSafeObject(), ...tokens };
+};
+
 // ── Send / Resend Verification Email ─────────────────────────────────
 const sendVerification = async (email) => {
   const user = await User.findOne({ email });
@@ -336,4 +446,4 @@ const verifyEmail = async (rawToken) => {
   return { message: 'Email verified successfully.' };
 };
 
-module.exports = { register, login, refreshAccessToken, forgotPassword, resetPassword, handleMetaCallback, sendVerification, verifyEmail };
+module.exports = { register, login, refreshAccessToken, forgotPassword, resetPassword, handleMetaCallback, buildGoogleAuthUrl, handleGoogleCallback, sendVerification, verifyEmail };

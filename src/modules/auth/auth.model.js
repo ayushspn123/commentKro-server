@@ -28,6 +28,14 @@ const userSchema = new mongoose.Schema(
       select: false, // Never return in queries
     },
     name: { type: String, trim: true },
+    avatar: { type: String }, // profile picture URL (e.g. from Google)
+    // Google OAuth — googleId is the Google account "sub" claim
+    googleId: { type: String, index: true, sparse: true },
+    authProvider: {
+      type: String,
+      enum: ['email', 'google'],
+      default: 'email',
+    },
     metaUserId: { type: String, index: true, sparse: true },
     plan: {
       type: String,

@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const authService = require('./auth.service');
 const env = require('../../config/env');
 const logger = require('../../utils/logger');
@@ -166,6 +167,72 @@ const metaOAuthCallback = async (req, res, next) => {
   }
 };
 
+// ─── Google OAuth (Sign in / Sign up with Google) ────────────────────
+// Only these frontend paths may be used as a post-login landing page,
+// preventing the OAuth flow from being abused as an open redirect.
+const GOOGLE_ALLOWED_RETURN_TO = ['/dashboard', '/onboarding', '/dashboard/settings/connections'];
+
+const sanitizeReturnTo = (returnTo) => {
+  if (typeof returnTo === 'string' && GOOGLE_ALLOWED_RETURN_TO.includes(returnTo)) return returnTo;
+  return '/dashboard';
+};
+
+// GET /api/auth/google — redirect the browser to Google's consent screen
+const googleOAuthRedirect = (req, res, next) => {
+  try {
+    const returnTo = sanitizeReturnTo(req.query.returnTo);
+    // CSRF nonce stored in a short-lived cookie and echoed back in `state`
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const state = Buffer.from(JSON.stringify({ nonce, returnTo })).toString('base64url');
+
+    res.cookie('g_oauth_state', nonce, {
+      ...cookieOptions(10 * 60 * 1000), // 10 minutes
+    });
+
+    res.redirect(authService.buildGoogleAuthUrl(state));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/auth/google/callback — Google redirects back here with `code`
+const googleOAuthCallback = async (req, res, next) => {
+  try {
+    const { code, state, error } = req.query;
+
+    if (error) {
+      return res.redirect(`${env.FRONTEND_URL}/login?error=${encodeURIComponent('Google sign-in was cancelled')}`);
+    }
+    if (!code || !state) {
+      return res.redirect(`${env.FRONTEND_URL}/login?error=${encodeURIComponent('Missing code or state')}`);
+    }
+
+    // Decode + verify state against the CSRF nonce cookie
+    let returnTo = '/dashboard';
+    let nonce;
+    try {
+      const decoded = JSON.parse(Buffer.from(state, 'base64url').toString());
+      nonce = decoded.nonce;
+      returnTo = sanitizeReturnTo(decoded.returnTo);
+    } catch {
+      return res.redirect(`${env.FRONTEND_URL}/login?error=${encodeURIComponent('Invalid state parameter')}`);
+    }
+
+    if (!nonce || nonce !== req.cookies?.g_oauth_state) {
+      return res.redirect(`${env.FRONTEND_URL}/login?error=${encodeURIComponent('State verification failed')}`);
+    }
+    res.clearCookie('g_oauth_state', cookieOptions());
+
+    const result = await authService.handleGoogleCallback(code);
+    setTokenCookies(res, result.accessToken, result.refreshToken);
+
+    res.redirect(`${env.FRONTEND_URL}${returnTo}`);
+  } catch (err) {
+    logger.error(`googleOAuthCallback error: ${err.response?.data ? JSON.stringify(err.response.data) : err.message}`);
+    res.redirect(`${env.FRONTEND_URL}/login?error=${encodeURIComponent('Google sign-in failed. Please try again.')}`);
+  }
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────
 /**
  * Returns shared cookie options based on environment.
@@ -228,4 +295,4 @@ const updateProfile = async (req, res, next) => {
   }
 };
 
-module.exports = { register, login, me, refreshToken, logout, forgotPassword, resetPassword, sendVerification, verifyEmail, metaOAuthRedirect, metaOAuthCallback, selectPlan, updateProfile };
+module.exports = { register, login, me, refreshToken, logout, forgotPassword, resetPassword, sendVerification, verifyEmail, metaOAuthRedirect, metaOAuthCallback, googleOAuthRedirect, googleOAuthCallback, selectPlan, updateProfile };
