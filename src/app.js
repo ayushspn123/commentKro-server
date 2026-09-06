@@ -1,3 +1,4 @@
+const supportRoutes = require('./modules/supportTicket/supportTicket.routes');
 require('dotenv').config();
 const express = require('express');
 const helmet = require('helmet');
@@ -86,6 +87,7 @@ app.use('/api/messages', messagesRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/pre-register', express.json({ limit: '1mb' }));
 app.use('/api/pre-register', preRegisterRoutes);
+app.use('/api/support', express.json({ limit: '10mb' }), supportRoutes);
 app.use('/api/contact', express.json({ limit: '1mb' }), contactRoutes);
 app.use('/api/leads', leadsRoutes);
 
