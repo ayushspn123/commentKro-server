@@ -127,11 +127,12 @@ exports.getAllUsers = async (req, res) => {
     const enrichedUsers = users.map(u => ({
       _id: u._id,
       name: u.name,
+      avatar: u.avatar || null,
       email: u.email,
       plan: u.plan,
       isVip: vipEmailSet.has(u.email.toLowerCase()),
       connectedPagesCount: u.connectedPages?.length || 0,
-      connectedPages: u.connectedPages?.map(p => ({ platform: p.platform, name: p.pageName, username: p.username })) || [],
+      connectedPages: u.connectedPages?.map(p => ({ platform: p.platform, name: p.pageName, username: p.username, picture: p.picture || null })) || [],
       createdAt: u.createdAt
     }));
 
