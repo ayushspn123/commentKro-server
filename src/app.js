@@ -21,6 +21,7 @@ const tokenRoutes = require('./modules/token/token.routes');
 const metaRoutes = require('./modules/meta/meta.routes');
 const messagesRoutes = require('./modules/messages/messages.routes');
 const paymentRoutes = require('./modules/payment/payment.routes');
+const preRegisterRoutes = require('./modules/preRegister/preRegister.routes');
 const contactRoutes = require('./modules/contact/contact.routes');
 const leadsRoutes = require('./modules/leads/leads.routes');
 
@@ -83,6 +84,8 @@ app.use('/api/tokens', tokenRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/pre-register', express.json({ limit: '1mb' }));
+app.use('/api/pre-register', preRegisterRoutes);
 app.use('/api/contact', express.json({ limit: '1mb' }), contactRoutes);
 app.use('/api/leads', leadsRoutes);
 
